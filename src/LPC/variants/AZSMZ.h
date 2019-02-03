@@ -188,10 +188,10 @@ constexpr SSPChannel LcdSpiChannel = SSP0;     //SSP0 (MISO0, MOSI0, SCK0)
 constexpr Pin LcdCSPin =       P1_22; //LCD Chip Select
 constexpr Pin LcdDCPin =       P2_6;  //DataControl Pin (A0) if none used set to NoPin
 constexpr Pin LcdBeepPin =     P1_30;
-constexpr Pin EncoderPinA =    P1_25;
+constexpr Pin EncoderPinA =    P4_28;
 constexpr Pin EncoderPinB =    P1_27;
 constexpr Pin EncoderPinSw =   P3_26; //click
-constexpr Pin PanelButtonPin = P1_22; //Extra button on Viki and RRD Panels (reset/back etc configurable)
+constexpr Pin PanelButtonPin = NoPin; //Extra button on Viki and RRD Panels (reset/back etc configurable)
 
 
 //VIKI2.0 Specific options

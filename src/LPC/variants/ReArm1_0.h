@@ -20,7 +20,7 @@
 #define LPC_BOARD_STRING "REARM"
 
 //Firmware for networking version only. Non-networking firmware will need to be manually copied to Sdcard
-#define FIRMWARE_FILE "firmware-REARM-NETWORK.bin"
+#define FIRMWARE_FILE "firmware.bin"
 
 
 

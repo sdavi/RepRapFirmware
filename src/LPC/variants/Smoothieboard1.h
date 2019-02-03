@@ -19,7 +19,7 @@
 #define LPC_BOARD_STRING "SMOOTHIEBOARD"
 
 //Firmware for networking version only. Non-networking firmware will need to be manually copied to Sdcard
-#define FIRMWARE_FILE "firmware-SMOOTHIEBOARD-NETWORK.bin"
+#define FIRMWARE_FILE "firmware.bin"
 
 
 #define SMOOTHIEBOARD1

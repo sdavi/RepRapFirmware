@@ -20,8 +20,7 @@
 
 
 //Firmware for networking version only. Non-networking firmware will need to be manually copied to Sdcard
-#define FIRMWARE_FILE "firmware-MKSSBASE-NETWORK.bin"
-
+#define FIRMWARE_FILE "firmware.bin"
 
 #define MKSSBASE
 
@@ -87,7 +86,7 @@ constexpr Pin END_STOP_PINS[NumEndstops] = {P1_24, P1_26, P1_28, P1_25, P1_27, P
 // pins even a non-Arduino pin.
 
 //Note: default to NoPin for Probe.
-constexpr Pin Z_PROBE_PIN =       NoPin;
+constexpr Pin Z_PROBE_PIN =       P1_28;
 // Digital pin number to turn the IR LED on (high) or off (low)
 constexpr Pin Z_PROBE_MOD_PIN06 = NoPin;                                        // Digital pin number to turn the IR LED on (high) or off (low) on Duet v0.6 and v1.0 (PB21)
 constexpr Pin Z_PROBE_MOD_PIN07 = NoPin;                                        // Digital pin number to turn the IR LED on (high) or off (low) on Duet v0.7 and v0.8.5 (PC10)
@@ -112,7 +111,8 @@ constexpr float digipotFactor = 113.33; //factor for converting current to digip
 // Analogue pin numbers
 //                                                      Bed    H0     H1
 constexpr Pin TEMP_SENSE_PINS[NumThermistorInputs] = {P0_23, P0_24, P0_25};
-constexpr Pin HEAT_ON_PINS[NumHeaters] = {P2_5, P2_7, P2_6}; // bed, h0, h1
+constexpr Pin HEAT_ON_PINS[NumHeaters] = {P2_5, P2_7, P2_6}; // bed, h0, h1 // pin P2_6 is shared with fan 1
+
 
 // PWM -
 //       The Hardware PWM channels ALL share the same Frequency,
@@ -145,7 +145,7 @@ constexpr Pin HEAT_ON_PINS[NumHeaters] = {P2_5, P2_7, P2_6}; // bed, h0, h1
 #define Timer3_PWM_Frequency 250 //For Hotends not on HW PWM
 
 #define Timer1_PWMPins {P2_5, NoPin, NoPin } //Bed at 10Hz
-#define Timer2_PWMPins {NoPin, NoPin , NoPin}
+#define Timer2_PWMPins {P1_23, NoPin , NoPin}
 #define Timer3_PWMPins {P2_7, P2_6, NoPin}  //H0 and H1 at 250Hz
 
 
@@ -174,8 +174,8 @@ constexpr Pin DiagPin = NoPin;
 
 
 // Use a PWM capable pin
-constexpr size_t NUM_FANS = 1;
-constexpr Pin COOLING_FAN_PINS[NUM_FANS] = { P2_4 };
+constexpr size_t NUM_FANS = 2;
+constexpr Pin COOLING_FAN_PINS[NUM_FANS] = { P2_4, P2_6 }; // pin P2_6 is shared with heater h1
 
 //Pins defined to use for external interrupt. **Must** be a pin on Port0 or Port2.
 //I.e. for Fan RPM, Filament Detection etc
@@ -213,7 +213,8 @@ constexpr Pin SdSpiCSPins[NumSdCards] = { P0_6, P0_28 };// Internal, external. N
 
 constexpr Pin SpecialPinMap[] =
 {
-    P0_26   // TH4
+    P0_26,  // TH4
+    P1_23   // Servo 1
 };
 
 
@@ -221,7 +222,7 @@ constexpr Pin SpecialPinMap[] =
 //SPI LCD Common Settings (RRD Full Graphic Smart Display)
 constexpr SSPChannel LcdSpiChannel = SSP0;     //SSP0 (MISO0, MOSI0, SCK0)
 constexpr Pin LcdCSPin =       P0_16; //LCD Chip Select
-constexpr Pin LcdDCPin =       NoPin;  //DataControl Pin (A0) if none used set to NoPin
+constexpr Pin LcdDCPin =       P0_18;  //DataControl Pin (A0) if none used set to NoPin
 constexpr Pin LcdBeepPin =     P1_31;
 constexpr Pin EncoderPinA =    P3_25;
 constexpr Pin EncoderPinB =    P3_26;

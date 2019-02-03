@@ -12,10 +12,6 @@ const size_t NumFirmwareUpdateModules = 0;
 #define UNUSED(x) (void)(x)
 #endif
 
-
-
-
-
 #define FIRMWARE_NAME "RepRapFirmware for LPC176[8/9] based Boards"
 
 
@@ -34,33 +30,23 @@ const size_t NumFirmwareUpdateModules = 0;
 #define HAS_VREF_MONITOR             0
 #define SUPPORT_NONLINEAR_EXTRUSION  0
 
-
-
 #define SUPPORT_INKJET		0					// set nonzero to support inkjet control
 #define SUPPORT_ROLAND		0					// set nonzero to support Roland mill
 #define SUPPORT_SCANNER		0					// set nonzero to support FreeLSS scanners
 #define SUPPORT_IOBITS		0					// set to support P parameter in G0/G1 commands
 #define SUPPORT_DHT_SENSOR	0					// set nonzero to support DHT temperature/humidity sensors
 
-
 #define ENABLE_TELNET 0
 #define ENABLE_FTP    0
-#define NO_PANELDUE                  1
+#define NO_PANELDUE   1
 
-//LCD Support with No Networking 
-#if defined(LPC_NETWORKING) || defined(ESP_NETWORKING)
-    #define SUPPORT_12864_LCD       0
-#else
-    #define SUPPORT_12864_LCD       1
-#endif
+#define SUPPORT_12864_LCD       1
 
 constexpr size_t NumExtraHeaterProtections = 4;
 constexpr size_t NumTachos = 0;
 constexpr Pin TachoPins[NumTachos] = {  };
 
-
 // The physical capabilities of the machine
-
 
 #if defined(__AZTEEGX5MINI__)
 # include "variants/AzteegX5Mini1_1.h"
@@ -72,6 +58,8 @@ constexpr Pin TachoPins[NumTachos] = {  };
 # include "variants/AZSMZ.h"
 #elif defined(__MKSSBASE__)
 # include "variants/MksSbase.h"
+#elif defined(__BIQUSKR__)
+# include "variants/BIQUSKR.h"
 #elif defined(__MBED__)
 //Only used for debugging
 # include "variants/MBed.h"
