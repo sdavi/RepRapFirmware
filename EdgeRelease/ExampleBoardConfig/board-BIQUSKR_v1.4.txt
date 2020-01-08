@@ -21,7 +21,7 @@ stepper.hasDriverCurrentControl = false;
 endstop.pins = {1.29, 1.28, 1.27, 1.26, 1.25}; //X, Y, Z, E0, E1 Endstops
 
 //                    Bed   E0    E1
-heat.tempSensePins = {0.23, 0.24, 0.25}; //tb, th0, th1
+heat.tempSensePins = {0.25, 0.24, 0.23}; //tb, th0, th1
 heat.heatOnPins =    {2.5, 2.7, 2.4}; //hbed, he0, he1
 
 // Z Probe pin
