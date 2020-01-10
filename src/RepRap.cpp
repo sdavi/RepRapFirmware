@@ -479,8 +479,10 @@ void RepRap::Diagnostics(MessageType mtype) noexcept
 	platform->MessageF(mtype, "%s version %s running on %s", FIRMWARE_NAME, VERSION, platform->GetElectronicsString());
 	const char* const expansionName = DuetExpansion::GetExpansionBoardName();
 	platform->MessageF(mtype, (expansionName == nullptr) ? "\n" : " + %s\n", expansionName);
+#elif defined(__LPC17xx__)
+    platform->MessageF(mtype, "%s (%s) version %s running on %s at %dMhz\n", FIRMWARE_NAME, lpcBoardName, VERSION, platform->GetElectronicsString(), (int)SystemCoreClock/1000000);
 #else
-	platform->MessageF(mtype, "%s version %s running on %s at %dMhz\n", FIRMWARE_NAME, VERSION, platform->GetElectronicsString(), (int)SystemCoreClock/1000000);
+    platform->MessageF(mtype, "%s version %s running on %s\n", FIRMWARE_NAME, VERSION, platform->GetElectronicsString());
 #endif
 
 #if SAM4E || SAM4S || SAME70

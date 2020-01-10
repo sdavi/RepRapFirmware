@@ -138,7 +138,9 @@ void BoardConfig::Init()
         
         if(!SetBoard(lpcBoardName)) // load the Correct PinTable for the defined Board (RRF3)
         {
+            //Failed to find string in known boards array
             reprap.GetPlatform().MessageF(UsbMessage, "Unknown board: %s\n", lpcBoardName );
+            SafeStrncpy(lpcBoardName, "generic", 8); //replace the string in lpcBoardName to "generic"
         }
         
         
