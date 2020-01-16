@@ -76,6 +76,9 @@ static const boardConfigEntry_t boardConfigs[]=
     {"8266wifi.LpcTfrReadyPin", &SamTfrReadyPin, nullptr, cvPinType},
     {"8266wifi.EspResetPin", &EspResetPin, nullptr, cvPinType},
 #endif
+#if LPC_TMC_SOFT_UART
+    {"stepper.TmcUartPins", TMC_UART_PINS, &MaxTotalDrivers, cvPinType},
+#endif
 };
 
 

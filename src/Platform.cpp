@@ -364,6 +364,8 @@ void Platform::Init() noexcept
 	numSmartDrivers = MaxSmartDrivers;
 # elif defined(DUET3)
 	numSmartDrivers = MaxSmartDrivers;
+# elif defined(__LPC17xx__)
+	numSmartDrivers = MaxSmartDrivers;
 # endif
 #endif
 
@@ -1476,7 +1478,9 @@ void Platform::InitialiseInterrupts() noexcept
 #endif
 
 #if SUPPORT_TMC22xx
-# if TMC22xx_HAS_MUX
+# if LPC_TMC_SOFT_UART
+	NVIC_SetPriority(RITIMER_IRQn, NvicPriorityDriversSerialTMC);		// set priority for Soft UART timer
+# elif TMC22xx_HAS_MUX
 	NVIC_SetPriority(TMC22xx_UART_IRQn, NvicPriorityDriversSerialTMC);	// set priority for TMC2660 SPI interrupt
 # else
 	NVIC_SetPriority(TMC22xxUartIRQns[0], NvicPriorityDriversSerialTMC);
@@ -3980,6 +3984,8 @@ float Platform::GetTmcDriversTemperature(unsigned int board) const noexcept
 	const uint16_t mask = LowestNBits<uint16_t>(5);					// all drivers (0-4) are on the DueX, no further expansion supported
 #elif defined(PCCB_08)
 	const uint16_t mask = LowestNBits<uint16_t>(2);					// drivers 0, 1 are on-board, no expansion supported
+#elif defined(__LPC17xx__)
+	const uint16_t mask = LowestNBits<uint16_t>(MaxSmartDrivers);	// All drivers
 #endif
 	return ((temperatureShutdownDrivers & mask) != 0) ? 150.0
 			: ((temperatureWarningDrivers & mask) != 0) ? 100.0
