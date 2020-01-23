@@ -60,7 +60,7 @@ ObjectModel::ObjectModel() noexcept
 // ObjectExplorationContext members
 
 ObjectExplorationContext::ObjectExplorationContext(const char *reportFlags, bool wal) noexcept
-	: numIndicesProvided(0), numIndicesCounted(0), shortForm(false), onlyLive(false), includeVerbose(false), wantArrayLength(wal)
+	: numIndicesProvided(0), numIndicesCounted(0), shortForm(false), onlyLive(false), includeVerbose(false), wantArrayLength(wal), includeNulls(false)
 {
 	while (true)
 	{
@@ -76,6 +76,9 @@ ObjectExplorationContext::ObjectExplorationContext(const char *reportFlags, bool
 			break;
 		case 'f':
 			onlyLive = true;
+			break;
+		case 'n':
+			includeNulls = true;
 			break;
 		default:
 			break;
@@ -127,19 +130,10 @@ void ObjectModel::ReportAsJson(OutputBuffer* buf, ObjectExplorationContext& cont
 		{
 			if (tbl->Matches(filter, context))
 			{
-				if (!added)
+				if (tbl->ReportAsJson(buf, context, this, filter, !added))
 				{
-					if (*filter == 0)
-					{
-						buf->cat('{');
-					}
 					added = true;
 				}
-				else
-				{
-					buf->cat(',');
-				}
-				tbl->ReportAsJson(buf, context, this, filter);
 			}
 			--numEntries;
 			++tbl;
@@ -168,13 +162,24 @@ void ObjectModel::ReportItemAsJson(OutputBuffer *buf, ObjectExplorationContext& 
 	if (context.WantArrayLength() && *filter == 0)
 	{
 		// We have been asked for the length of an array and we have reached the end of the filter, so the value should be an array
-		if (val.type == TYPE_OF(const ObjectModelArrayDescriptor*))
+		switch (val.type)
 		{
+		case TYPE_OF(const ObjectModelArrayDescriptor*):
 			buf->catf("%u", val.omadVal->GetNumElements(this, context));
-		}
-		else
-		{
+			break;
+
+		case TYPE_OF(Bitmap<uint16_t>):
+		case TYPE_OF(Bitmap<uint32_t>):
+			buf->catf("%u", Bitmap<uint32_t>::MakeFromRaw(val.uVal).CountSetBits());
+			break;
+
+		case TYPE_OF(Bitmap<uint64_t>):
+			buf->catf("%u", Bitmap<uint64_t>::MakeFromRaw(val.Get56BitValue()).CountSetBits());
+			break;
+
+		default:
 			buf->cat("null");
+			break;
 		}
 	}
 	else
@@ -231,7 +236,14 @@ void ObjectModel::ReportItemAsJson(OutputBuffer *buf, ObjectExplorationContext& 
 			break;
 
 		case TYPE_OF(float):
-			buf->catf((val.param == 3) ? "%.3f" : (val.param == 2) ? "%.2f" : "%.1f", (double)val.fVal);
+			if (val.fVal == 0.0)
+			{
+				buf->cat('0');				// replace 0.000... in JSON by 0. This is mostly to save space when writing workplace coordinates.
+			}
+			else
+			{
+				buf->catf(val.GetFloatFormatString(), (double)val.fVal);
+			}
 			break;
 
 		case TYPE_OF(uint32_t):
@@ -246,22 +258,95 @@ void ObjectModel::ReportItemAsJson(OutputBuffer *buf, ObjectExplorationContext& 
 			buf->EncodeString(val.sVal, true);
 			break;
 
-		case TYPE_OF(Bitmap32):
-			if (context.ShortFormReport())
+		case TYPE_OF(Bitmap<uint16_t>):
+		case TYPE_OF(Bitmap<uint32_t>):
+			if (*filter == '[')
+			{
+				++filter;
+				if (*filter == ']')						// if reporting on all elements in the array
+				{
+					++filter;
+				}
+				else
+				{
+					const char *endptr;
+					const long index = SafeStrtol(filter, &endptr);
+					if (endptr == filter || *endptr != ']' || index < 0 || (size_t)index >= val.omadVal->GetNumElements(this, context))
+					{
+						buf->cat("null");				// avoid returning badly-formed JSON
+						break;							// invalid syntax, or index out of range
+					}
+					const auto bm = Bitmap<uint32_t>::MakeFromRaw(val.uVal);
+					buf->catf("%u", bm.GetSetBitNumber(index));
+					break;
+				}
+			}
+			else if (context.ShortFormReport())
 			{
 				buf->catf("%" PRIu32, val.uVal);
+				break;
 			}
-			else
+
+			// If we get here then we want a long form report
 			{
-				uint32_t v = val.uVal;
+				const auto bm = Bitmap<uint32_t>::MakeFromRaw(val.uVal);
 				buf->cat('[');
-				buf->cat((v & 1) ? '1' : '0');
-				for (unsigned int i = 1; i < 32; ++i)
+				bm.Iterate
+					([buf](unsigned int bn, bool first) noexcept
+						{
+							if (!first)
+							{
+								buf->cat(',');
+							}
+							buf->catf("%u", bn);
+						}
+					);
+				buf->cat(']');
+			}
+			break;
+
+		case TYPE_OF(Bitmap<uint64_t>):
+			if (*filter == '[')
+			{
+				++filter;
+				if (*filter == ']')						// if reporting on all elements in the array
 				{
-					v >>= 1;
-					buf->cat(',');
-					buf->cat((v & 1) ? '1' : '0');
+					++filter;
 				}
+				else
+				{
+					const char *endptr;
+					const long index = SafeStrtol(filter, &endptr);
+					if (endptr == filter || *endptr != ']' || index < 0 || (size_t)index >= val.omadVal->GetNumElements(this, context))
+					{
+						buf->cat("null");				// avoid returning badly-formed JSON
+						break;							// invalid syntax, or index out of range
+					}
+					const auto bm = Bitmap<uint64_t>::MakeFromRaw(val.uVal);
+					buf->catf("%u", bm.GetSetBitNumber(index));
+					break;
+				}
+			}
+			else if (context.ShortFormReport())
+			{
+				buf->catf("%" PRIu64, val.Get56BitValue());
+				break;
+			}
+
+			// If we get here then we want a long form report
+			{
+				const auto bm = Bitmap<uint64_t>::MakeFromRaw(val.Get56BitValue());
+				buf->cat('[');
+				bm.Iterate
+					([buf](unsigned int bn, bool first) noexcept
+						{
+							if (!first)
+							{
+								buf->cat(',');
+							}
+							buf->catf("%u", bn);
+						}
+					);
 				buf->cat(']');
 			}
 			break;
@@ -303,19 +388,20 @@ void ObjectModel::ReportItemAsJson(OutputBuffer *buf, ObjectExplorationContext& 
 
 		case TYPE_OF(DateTime):
 			{
-				const time_t time = val.Get40BitValue();
-				if (time == 0)
-				{
-					buf->cat("null");
-				}
-				else
-				{
-					tm timeInfo;
-					gmtime_r(&time, &timeInfo);
-					buf->catf("\"%04u-%02u-%02uT%02u:%02u:%02u\"",
-								timeInfo.tm_year + 1900, timeInfo.tm_mon + 1, timeInfo.tm_mday, timeInfo.tm_hour, timeInfo.tm_min, timeInfo.tm_sec);
-				}
+				const time_t time = val.Get56BitValue();
+				tm timeInfo;
+				gmtime_r(&time, &timeInfo);
+				buf->catf("\"%04u-%02u-%02uT%02u:%02u:%02u\"",
+							timeInfo.tm_year + 1900, timeInfo.tm_mon + 1, timeInfo.tm_mday, timeInfo.tm_hour, timeInfo.tm_min, timeInfo.tm_sec);
 			}
+			break;
+
+		case TYPE_OF(DriverId):
+#if SUPPORT_CAN_EXPANSION
+			buf->catf("\"%u.%u\"", (unsigned int)(val.uVal >> 8), (unsigned int)(val.uVal & 0xFF));
+#else
+			buf->catf("\"%u\"", (unsigned int)val.uVal);
+#endif
 			break;
 
 		case NoType:
@@ -398,20 +484,26 @@ bool ObjectModelTableEntry::Matches(const char* filterString, const ObjectExplor
 }
 
 // Add the value of this element to the buffer, returning true if it matched and we did
-void ObjectModelTableEntry::ReportAsJson(OutputBuffer* buf, ObjectExplorationContext& context, const ObjectModel *self, const char* filter) const noexcept
+bool ObjectModelTableEntry::ReportAsJson(OutputBuffer* buf, ObjectExplorationContext& context, const ObjectModel *self, const char* filter, bool first) const noexcept
 {
-	if (*filter == 0)
-	{
-		buf->cat('"');
-		buf->cat(name);
-		buf->cat("\":");
-	}
 	const char * nextElement = ObjectModel::GetNextElement(filter);
 	if (*nextElement == '.')
 	{
 		++nextElement;
 	}
-	self->ReportItemAsJson(buf, context, func(self, context), nextElement);
+	const ExpressionValue val = func(self, context);
+	if (val.type != NoType || context.ShouldIncludeNulls())
+	{
+		if (*filter == 0)
+		{
+			buf->cat((first) ? "{\"" : ",\"");
+			buf->cat(name);
+			buf->cat("\":");
+		}
+		self->ReportItemAsJson(buf, context, val, nextElement);
+		return true;
+	}
+	return false;
 }
 
 // Compare an ID with the name of this object
@@ -449,42 +541,112 @@ ExpressionValue ObjectModel::GetObjectValue(const StringParser& sp, ObjectExplor
 
 ExpressionValue ObjectModel::GetObjectValue(const StringParser& sp, ObjectExplorationContext& context, ExpressionValue val, const char *idString) const
 {
-	if (val.type == TYPE_OF(const ObjectModelArrayDescriptor*))
+	switch (val.type)
 	{
-		if (*idString == 0 && context.WantArrayLength())
+	case TYPE_OF(const ObjectModelArrayDescriptor*):
 		{
+			if (*idString == 0 && context.WantArrayLength())
+			{
+				ReadLocker lock(val.omadVal->lockPointer);
+				return ExpressionValue((int32_t)val.omadVal->GetNumElements(this, context));
+			}
+			if (*idString != '^')
+			{
+				throw sp.ConstructParseException("missing array index");
+			}
+
+			context.AddIndex();
 			ReadLocker lock(val.omadVal->lockPointer);
-			return ExpressionValue((int32_t)val.omadVal->GetNumElements(this, context));
-		}
-		if (*idString != '^')
-		{
-			throw sp.ConstructParseException("missing array index");
-		}
 
-		context.AddIndex();
-		ReadLocker lock(val.omadVal->lockPointer);
+			if (context.GetLastIndex() < 0 || (size_t)context.GetLastIndex() >= val.omadVal->GetNumElements(this, context))
+			{
+				throw sp.ConstructParseException("array index out of bounds");
+			}
 
-		if (context.GetLastIndex() < 0 || (size_t)context.GetLastIndex() >= val.omadVal->GetNumElements(this, context))
-		{
-			throw sp.ConstructParseException("array index out of bounds");
+			const ExpressionValue arrayElement = val.omadVal->GetElement(this, context);
+			return GetObjectValue(sp, context, arrayElement, idString + 1);
 		}
 
-		const ExpressionValue arrayElement = val.omadVal->GetElement(this, context);
-		return GetObjectValue(sp, context, arrayElement, idString + 1);
-	}
-
-	if (val.type == TYPE_OF(const ObjectModel*))
-	{
+	case TYPE_OF(const ObjectModel*):
 		if (*idString == '.')
 		{
 			return val.omVal->GetObjectValue(sp, context, idString + 1, val.param);
 		}
 		throw sp.ConstructParseException((*idString == 0) ? "selected value has non-primitive type" : "syntax error in value selector string");
-	}
 
-	if (*idString == 0)
-	{
-		return val;
+	case TYPE_OF(Bitmap<uint16_t>):
+	case TYPE_OF(Bitmap<uint32_t>):
+		if (context.WantArrayLength())
+		{
+			if (*idString != 0)
+			{
+				break;
+			}
+			const auto bm = Bitmap<uint32_t>::MakeFromRaw(val.uVal);
+			return ExpressionValue((int32_t)bm.CountSetBits());
+		}
+		if (*idString == '^')
+		{
+			++idString;
+			if (*idString != 0)
+			{
+				break;
+			}
+			const auto bm = Bitmap<uint32_t>::MakeFromRaw(val.uVal);
+			return ExpressionValue((int32_t)bm.GetSetBitNumber(context.GetLastIndex()));
+		}
+		if (*idString != 0)
+		{
+			break;
+		}
+		if (val.uVal > 0x7FFFFFFF)
+		{
+			throw sp.ConstructParseException("bitmap too large to convert to integer");
+		}
+		return ExpressionValue((int32_t)val.uVal);
+
+	case TYPE_OF(Bitmap<uint64_t>):
+		if (context.WantArrayLength())
+		{
+			if (*idString != 0)
+			{
+				break;
+			}
+			const auto bm = Bitmap<uint64_t>::MakeFromRaw(val.Get56BitValue());
+			return ExpressionValue((int32_t)bm.CountSetBits());
+		}
+		if (*idString == '^')
+		{
+			++idString;
+			if (*idString != 0)
+			{
+				break;
+			}
+			const auto bm = Bitmap<uint64_t>::MakeFromRaw(val.Get56BitValue());
+			return ExpressionValue((int32_t)bm.GetSetBitNumber(context.GetLastIndex()));
+		}
+		if (*idString != 0)
+		{
+			break;
+		}
+		if (val.Get56BitValue() > 0x7FFFFFFF)
+		{
+			throw sp.ConstructParseException("bitmap too large to convert to integer");
+		}
+		return ExpressionValue((int32_t)val.uVal);
+
+	case TYPE_OF(const char*):
+		if (*idString == 0 && context.WantArrayLength())
+		{
+			return ExpressionValue((int32_t)strlen(val.sVal));
+		}
+		// no break
+	default:
+		if (*idString == 0)
+		{
+			return val;
+		}
+		break;
 	}
 
 	throw sp.ConstructParseException("reached primitive type before end of selector string");

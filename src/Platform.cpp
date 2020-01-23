@@ -169,14 +169,14 @@ extern "C" void UrgentInit()
 
 DriversBitmap AxisDriversConfig::GetDriversBitmap() const noexcept
 {
-	DriversBitmap rslt = 0;
+	DriversBitmap rslt;
 	for (size_t i = 0; i < numDrivers; ++i)
 	{
 #if SUPPORT_CAN_EXPANSION
 		if (driverNumbers[i].IsLocal())
 #endif
 		{
-			SetBit(rslt, driverNumbers[i].localDriver);
+			rslt.SetBit(driverNumbers[i].localDriver);
 		}
 	}
 	return rslt;
@@ -194,56 +194,101 @@ DriversBitmap AxisDriversConfig::GetDriversBitmap() const noexcept
 // Macro to build a standard lambda function that includes the necessary type conversions
 #define OBJECT_MODEL_FUNC(...) OBJECT_MODEL_FUNC_BODY(Platform, __VA_ARGS__)
 
+constexpr ObjectModelArrayDescriptor Platform::axisDriversArrayDescriptor =
+{
+	nullptr,					// no lock needed
+	[] (const ObjectModel *self, const ObjectExplorationContext& context) noexcept -> size_t { return ((const Platform*)self)->axisDrivers[context.GetLastIndex()].numDrivers; },
+	[] (const ObjectModel *self, ObjectExplorationContext& context) noexcept -> ExpressionValue
+			{ return ExpressionValue(((const Platform*)self)->axisDrivers[context.GetIndex(1)].driverNumbers[context.GetLastIndex()]); }
+};
+
+constexpr ObjectModelArrayDescriptor Platform::workplaceOffsetsArrayDescriptor =
+{
+	nullptr,					// no lock needed
+	[] (const ObjectModel *self, const ObjectExplorationContext& context) noexcept -> size_t { return NumCoordinateSystems; },
+	[] (const ObjectModel *self, ObjectExplorationContext& context) noexcept -> ExpressionValue
+			{ return ExpressionValue(reprap.GetGCodes().GetWorkplaceOffset(context.GetIndex(1), context.GetIndex(0)), 3); }
+};
+
 constexpr ObjectModelTableEntry Platform::objectModelTable[] =
 {
 	// 0. boards[] members
-	{ "firmwareFileName",	OBJECT_MODEL_FUNC_NOSELF(IAP_FIRMWARE_FILE),			ObjectModelEntryFlags::none },
-	{ "firmwareVersion",	OBJECT_MODEL_FUNC_NOSELF(VERSION),						ObjectModelEntryFlags::none },
+	{ "firmwareFileName",	OBJECT_MODEL_FUNC_NOSELF(IAP_FIRMWARE_FILE),														ObjectModelEntryFlags::none },
+	{ "firmwareVersion",	OBJECT_MODEL_FUNC_NOSELF(VERSION),																	ObjectModelEntryFlags::none },
 #if HAS_LINUX_INTERFACE
-	{ "iapFileNameSBC",		OBJECT_MODEL_FUNC_NOSELF(IAP_UPDATE_FILE_SBC),			ObjectModelEntryFlags::none },
+	{ "iapFileNameSBC",		OBJECT_MODEL_FUNC_NOSELF(IAP_UPDATE_FILE_SBC),														ObjectModelEntryFlags::none },
 #endif
-	{ "iapFileNameSD",		OBJECT_MODEL_FUNC_NOSELF(IAP_UPDATE_FILE),				ObjectModelEntryFlags::none },
-	{ "maxHeaters",			OBJECT_MODEL_FUNC_NOSELF((int32_t)MaxHeaters),			ObjectModelEntryFlags::verbose },
-	{ "maxMotors",			OBJECT_MODEL_FUNC_NOSELF((int32_t)NumDirectDrivers),	ObjectModelEntryFlags::verbose },
-	{ "mcuTemp",			OBJECT_MODEL_FUNC(self, 1),								ObjectModelEntryFlags::live },
+	{ "iapFileNameSD",		OBJECT_MODEL_FUNC_NOSELF(IAP_UPDATE_FILE),															ObjectModelEntryFlags::none },
+	{ "maxHeaters",			OBJECT_MODEL_FUNC_NOSELF((int32_t)MaxHeaters),														ObjectModelEntryFlags::verbose },
+	{ "maxMotors",			OBJECT_MODEL_FUNC_NOSELF((int32_t)NumDirectDrivers),												ObjectModelEntryFlags::verbose },
+	{ "mcuTemp",			OBJECT_MODEL_FUNC(self, 1),																			ObjectModelEntryFlags::live },
 # ifdef DUET_NG
-	{ "name",				OBJECT_MODEL_FUNC(self->GetBoardName()),				ObjectModelEntryFlags::none },
-	{ "shortName",			OBJECT_MODEL_FUNC(self->GetBoardShortName()),			ObjectModelEntryFlags::none },
+	{ "name",				OBJECT_MODEL_FUNC(self->GetBoardName()),															ObjectModelEntryFlags::none },
+	{ "shortName",			OBJECT_MODEL_FUNC(self->GetBoardShortName()),														ObjectModelEntryFlags::none },
 # else
-	{ "name",				OBJECT_MODEL_FUNC_NOSELF(BOARD_NAME),					ObjectModelEntryFlags::none },
-	{ "shortName",			OBJECT_MODEL_FUNC_NOSELF(BOARD_SHORT_NAME),				ObjectModelEntryFlags::none },
+	{ "name",				OBJECT_MODEL_FUNC_NOSELF(BOARD_NAME),																ObjectModelEntryFlags::none },
+	{ "shortName",			OBJECT_MODEL_FUNC_NOSELF(BOARD_SHORT_NAME),															ObjectModelEntryFlags::none },
 # endif
 #if HAS_12V_MONITOR
-	{ "v12",				OBJECT_MODEL_FUNC(self, 3),								ObjectModelEntryFlags::live },
+	{ "v12",				OBJECT_MODEL_FUNC(self, 6),																			ObjectModelEntryFlags::live },
 #endif
-	{ "vIn",				OBJECT_MODEL_FUNC(self, 2),								ObjectModelEntryFlags::live },
+	{ "vIn",				OBJECT_MODEL_FUNC(self, 2),																			ObjectModelEntryFlags::live },
 
 	// 1. mcuTemp members
-	{ "current",			OBJECT_MODEL_FUNC(self->GetMcuTemperatures().current),	ObjectModelEntryFlags::live },
-	{ "max",				OBJECT_MODEL_FUNC(self->GetMcuTemperatures().max),		ObjectModelEntryFlags::none },
-	{ "min",				OBJECT_MODEL_FUNC(self->GetMcuTemperatures().min),		ObjectModelEntryFlags::none },
+	{ "current",			OBJECT_MODEL_FUNC(self->GetMcuTemperatures().current, 1),											ObjectModelEntryFlags::live },
+	{ "max",				OBJECT_MODEL_FUNC(self->GetMcuTemperatures().max, 1),												ObjectModelEntryFlags::none },
+	{ "min",				OBJECT_MODEL_FUNC(self->GetMcuTemperatures().min, 1),												ObjectModelEntryFlags::none },
 
 	// 2. vIn members
-	{ "current",			OBJECT_MODEL_FUNC(self->GetCurrentPowerVoltage()),		ObjectModelEntryFlags::live },
-	{ "max",				OBJECT_MODEL_FUNC(self->GetPowerVoltages().max),		ObjectModelEntryFlags::none },
-	{ "min",				OBJECT_MODEL_FUNC(self->GetPowerVoltages().min),		ObjectModelEntryFlags::none },
+	{ "current",			OBJECT_MODEL_FUNC(self->GetCurrentPowerVoltage(), 1),												ObjectModelEntryFlags::live },
+	{ "max",				OBJECT_MODEL_FUNC(self->GetPowerVoltages().max, 1),													ObjectModelEntryFlags::none },
+	{ "min",				OBJECT_MODEL_FUNC(self->GetPowerVoltages().min, 1),													ObjectModelEntryFlags::none },
+
+	// 3. move.axes[] members
+	{ "acceleration",		OBJECT_MODEL_FUNC(self->Acceleration(context.GetLastIndex()), 1),									ObjectModelEntryFlags::none },
+	{ "drivers",			OBJECT_MODEL_FUNC_NOSELF(&axisDriversArrayDescriptor),												ObjectModelEntryFlags::none },
+	{ "homed",				OBJECT_MODEL_FUNC_NOSELF(reprap.GetGCodes().IsAxisHomed(context.GetLastIndex())),					ObjectModelEntryFlags::live },
+	{ "jerk",				OBJECT_MODEL_FUNC(MinutesToSeconds * self->GetInstantDv(context.GetLastIndex()), 1),				ObjectModelEntryFlags::none },
+	{ "letter",				OBJECT_MODEL_FUNC_NOSELF(reprap.GetGCodes().GetAxisLetters()[context.GetLastIndex()]),				ObjectModelEntryFlags::none },
+	{ "machinePosition",	OBJECT_MODEL_FUNC_NOSELF(reprap.GetMove().LiveCoordinate(context.GetLastIndex(), reprap.GetCurrentTool()), 3),	ObjectModelEntryFlags::live },
+	{ "max",				OBJECT_MODEL_FUNC(self->AxisMaximum(context.GetLastIndex()), 1),									ObjectModelEntryFlags::none },
+	{ "min",				OBJECT_MODEL_FUNC(self->AxisMinimum(context.GetLastIndex()), 1),									ObjectModelEntryFlags::none },
+	{ "speed",				OBJECT_MODEL_FUNC(MinutesToSeconds * self->MaxFeedrate(context.GetLastIndex()), 1),					ObjectModelEntryFlags::none },
+	{ "userPosition",		OBJECT_MODEL_FUNC_NOSELF(reprap.GetGCodes().GetUserCoordinate(context.GetLastIndex()), 3),			ObjectModelEntryFlags::live },
+	{ "visible",			OBJECT_MODEL_FUNC_NOSELF(context.GetLastIndex() < (int32_t)reprap.GetGCodes().GetVisibleAxes()),	ObjectModelEntryFlags::none },
+	{ "workplaceOffsets",	OBJECT_MODEL_FUNC_NOSELF(&workplaceOffsetsArrayDescriptor),											ObjectModelEntryFlags::none },
+
+	// 4. move.extruders[] members
+	{ "driver",				OBJECT_MODEL_FUNC(self->extruderDrivers[context.GetLastIndex()]),									ObjectModelEntryFlags::none },
+	{ "factor",				OBJECT_MODEL_FUNC_NOSELF(reprap.GetGCodes().GetExtrusionFactor(context.GetLastIndex()), 1),			ObjectModelEntryFlags::none },
+	{ "nonlinear",			OBJECT_MODEL_FUNC(self, 5),																			ObjectModelEntryFlags::none },
+	{ "pressureAdvance",	OBJECT_MODEL_FUNC(self->GetPressureAdvance(context.GetLastIndex()), 2),								ObjectModelEntryFlags::none },
+
+	// 5. move.extruders[].nonlinear members
+	{ "a",					OBJECT_MODEL_FUNC(self->nonlinearExtrusionA[context.GetLastIndex()], 3),							ObjectModelEntryFlags::none },
+	{ "b",					OBJECT_MODEL_FUNC(self->nonlinearExtrusionB[context.GetLastIndex()], 3),							ObjectModelEntryFlags::none },
+	{ "upperLimit",			OBJECT_MODEL_FUNC(self->nonlinearExtrusionLimit[context.GetLastIndex()], 2),						ObjectModelEntryFlags::none },
 
 #if HAS_12V_MONITOR
-	// 3. v12 members
-	{ "current",			OBJECT_MODEL_FUNC(self->GetV12Voltages().current),		ObjectModelEntryFlags::live },
-	{ "max",				OBJECT_MODEL_FUNC(self->GetV12Voltages().max),			ObjectModelEntryFlags::none },
-	{ "min",				OBJECT_MODEL_FUNC(self->GetV12Voltages().min),			ObjectModelEntryFlags::none },
+	// 6. v12 members
+	{ "current",			OBJECT_MODEL_FUNC(self->GetV12Voltages().current, 1),												ObjectModelEntryFlags::live },
+	{ "max",				OBJECT_MODEL_FUNC(self->GetV12Voltages().max, 1),													ObjectModelEntryFlags::none },
+	{ "min",				OBJECT_MODEL_FUNC(self->GetV12Voltages().min, 1),													ObjectModelEntryFlags::none },
 #endif
+
 };
 
 constexpr uint8_t Platform::objectModelTableDescriptor[] =
 {
-	3 + HAS_12V_MONITOR,
-	9 + HAS_LINUX_INTERFACE + HAS_12V_MONITOR,
-	3,
-	3,
+	6 + HAS_12V_MONITOR,							// number of sections
+	9 + HAS_LINUX_INTERFACE + HAS_12V_MONITOR,		// section 0: boards[]
+	3,												// section 1: mcuTemp
+	3,												// section 2: vIn
+	12,												// section 3: move.axes[]
+	4,												// section 4: move.extruders[]
+	3,												// section 5: move.extruders[].nonlinear
 #if HAS_12V_MONITOR
-	3
+	3												// section 6: v12
 #endif
 };
 
@@ -499,7 +544,8 @@ void Platform::Init() noexcept
 	}
 
 	minimumMovementSpeed = DefaultMinFeedrate;
-	axisMaximaProbed = axisMinimaProbed = 0;
+	axisMaximaProbed.Clear();
+	axisMinimaProbed.Clear();
 	idleCurrentFactor = DefaultIdleCurrentFactor;
 
 	// Motors
@@ -604,13 +650,23 @@ void Platform::Init() noexcept
 # else
 	SmartDrivers::Init(ENABLE_PINS, numSmartDrivers);
 # endif
-	temperatureShutdownDrivers = temperatureWarningDrivers = shortToGroundDrivers = openLoadADrivers = openLoadBDrivers = notOpenLoadADrivers = notOpenLoadBDrivers = 0;
+	temperatureShutdownDrivers.Clear();
+	temperatureWarningDrivers.Clear();
+	shortToGroundDrivers.Clear();
+	openLoadADrivers.Clear();
+	openLoadBDrivers.Clear();
+	notOpenLoadADrivers.Clear();
+	notOpenLoadBDrivers.Clear();
 #endif
 
 #if HAS_STALL_DETECT
-	stalledDrivers = 0;
-	logOnStallDrivers = pauseOnStallDrivers = rehomeOnStallDrivers = 0;
-	stalledDriversToLog = stalledDriversToPause = stalledDriversToRehome = 0;
+	stalledDrivers.Clear();
+	logOnStallDrivers.Clear();
+	pauseOnStallDrivers.Clear();
+	rehomeOnStallDrivers.Clear();
+	stalledDriversToLog.Clear();
+	stalledDriversToPause.Clear();
+	stalledDriversToRehome.Clear();
 #endif
 
 #if HAS_VOLTAGE_MONITOR
@@ -625,12 +681,12 @@ void Platform::Init() noexcept
 	extrusionAncilliaryPwmValue = 0.0;
 
 	// Initialise the configured heaters to just the default bed heater (there are no default chamber heaters)
-	configuredHeaters = 0;
+	configuredHeaters.Clear();
 
 #ifndef DUET3
 	if (DefaultBedHeater >= 0)
 	{
-		SetBit(configuredHeaters, DefaultBedHeater);
+		configuredHeaters.SetBit(DefaultBedHeater);
 	}
 #endif
 
@@ -945,6 +1001,7 @@ void Platform::Spin() noexcept
 			driversPowered = false;
 			++numVinUnderVoltageEvents;
 			lastVinUnderVoltageValue = currentVin;					// save this because the voltage may have changed by the time we report it
+			reprap.GetGCodes().SetAllAxesNotHomed();
 		}
 # if ENFORCE_MAX_VIN
 		else if (currentVin > driverOverVoltageAdcReading)
@@ -972,7 +1029,7 @@ void Platform::Spin() noexcept
 			if (enableValues[nextDriveToPoll] >= 0)				// don't poll driver if it is flagged "no poll"
 			{
 				const uint32_t stat = SmartDrivers::GetAccumulatedStatus(nextDriveToPoll, 0);
-				const DriversBitmap mask = MakeBitmap<DriversBitmap>(nextDriveToPoll);
+				const DriversBitmap mask = DriversBitmap::MakeFromBits(nextDriveToPoll);
 				if (stat & TMC_RR_OT)
 				{
 					temperatureShutdownDrivers |= mask;
@@ -997,14 +1054,15 @@ void Platform::Spin() noexcept
 					if (!openLoadATimer.IsRunning())
 					{
 						openLoadATimer.Start();
-						openLoadADrivers = notOpenLoadADrivers = 0;
+						openLoadADrivers.Clear();
+						notOpenLoadADrivers.Clear();
 					}
 					openLoadADrivers |= mask;
 				}
 				else if (openLoadATimer.IsRunning())
 				{
 					notOpenLoadADrivers |= mask;
-					if ((openLoadADrivers & ~notOpenLoadADrivers) == 0)
+					if (!openLoadADrivers.Intersects(~notOpenLoadADrivers))
 					{
 						openLoadATimer.Stop();
 					}
@@ -1015,14 +1073,15 @@ void Platform::Spin() noexcept
 					if (!openLoadBTimer.IsRunning())
 					{
 						openLoadBTimer.Start();
-						openLoadBDrivers = notOpenLoadBDrivers = 0;
+						openLoadBDrivers.Clear();
+						notOpenLoadBDrivers.Clear();
 					}
 					openLoadBDrivers |= mask;
 				}
 				else if (openLoadBTimer.IsRunning())
 				{
 					notOpenLoadBDrivers |= mask;
-					if ((openLoadBDrivers & ~notOpenLoadBDrivers) == 0)
+					if (!openLoadBDrivers.Intersects(~notOpenLoadBDrivers))
 					{
 						openLoadBTimer.Stop();
 					}
@@ -1031,18 +1090,18 @@ void Platform::Spin() noexcept
 # if HAS_STALL_DETECT
 				if ((stat & TMC_RR_SG) != 0)
 				{
-					if ((stalledDrivers & mask) == 0)
+					if (!stalledDrivers.Intersects(mask))
 					{
 						// This stall is new so check whether we need to perform some action in response to the stall
-						if ((rehomeOnStallDrivers & mask) != 0)
+						if (rehomeOnStallDrivers.Intersects(mask))
 						{
 							stalledDriversToRehome |= mask;
 						}
-						else if ((pauseOnStallDrivers & mask) != 0)
+						else if (pauseOnStallDrivers.Intersects(mask))
 						{
 							stalledDriversToPause |= mask;
 						}
-						else if ((logOnStallDrivers & mask) != 0)
+						else if (logOnStallDrivers.Intersects(mask))
 						{
 							stalledDriversToLog |= mask;
 						}
@@ -1058,18 +1117,18 @@ void Platform::Spin() noexcept
 
 # if HAS_STALL_DETECT
 			// Action any pause or rehome actions due to motor stalls. This may have to be done more than once.
-			if (stalledDriversToRehome != 0)
+			if (stalledDriversToRehome.IsNonEmpty())
 			{
 				if (reprap.GetGCodes().ReHomeOnStall(stalledDriversToRehome))
 				{
-					stalledDriversToRehome = 0;
+					stalledDriversToRehome.Clear();
 				}
 			}
-			else if (stalledDriversToPause != 0)
+			else if (stalledDriversToPause.IsNonEmpty())
 			{
 				if (reprap.GetGCodes().PauseOnStall(stalledDriversToPause))
 				{
-					stalledDriversToPause = 0;
+					stalledDriversToPause.Clear();
 				}
 			}
 # endif
@@ -1104,7 +1163,13 @@ void Platform::Spin() noexcept
 #if HAS_SMART_DRIVERS
 		openLoadATimer.Stop();
 		openLoadBTimer.Stop();
-		temperatureShutdownDrivers = temperatureWarningDrivers = shortToGroundDrivers = openLoadADrivers = openLoadBDrivers = notOpenLoadADrivers = notOpenLoadBDrivers = 0;
+		temperatureShutdownDrivers.Clear();
+		temperatureWarningDrivers.Clear();
+		shortToGroundDrivers.Clear();
+		openLoadADrivers.Clear();
+		openLoadBDrivers.Clear();
+		notOpenLoadADrivers.Clear();
+		notOpenLoadBDrivers.Clear();
 #endif
 	}
 
@@ -1149,15 +1214,15 @@ void Platform::Spin() noexcept
 			}
 
 			// Don't warn about a hot driver if we recently turned on a fan to cool it
-			if (temperatureWarningDrivers != 0)
+			if (temperatureWarningDrivers.IsNonEmpty())
 			{
 				const DriversBitmap driversMonitored[NumTmcDriversSenseChannels] =
 # ifdef DUET_NG
-					{ LowestNBits<DriversBitmap>(5), LowestNBits<DriversBitmap>(5) << 5 };			// first channel is Duet, second is DueX5
+					{ DriversBitmap::MakeLowestNBits(5), DriversBitmap::MakeLowestNBits(5).ShiftUp(5) };			// first channel is Duet, second is DueX5
 # elif defined(DUET_M)
-					{ LowestNBits<DriversBitmap>(5), LowestNBits<DriversBitmap>(2) << 5 };			// first channel is Duet, second is daughter board
+					{ DriversBitmap::MakeLowestNBits(5), DriversBitmap::MakeLowestNBits(2).ShiftUp(5) };			// first channel is Duet, second is daughter board
 # else
-					{ LowestNBits<DriversBitmap>(NumDirectDrivers) };
+					{ DriversBitmap::MakeLowestNBits(NumDirectDrivers) };
 # endif
 				for (unsigned int i = 0; i < NumTmcDriversSenseChannels; ++i)
 				{
@@ -1176,14 +1241,12 @@ void Platform::Spin() noexcept
 
 #if HAS_STALL_DETECT
 			// Check for stalled drivers that need to be reported and logged
-			if (stalledDriversToLog != 0 && reprap.GetGCodes().IsReallyPrinting())
+			if (stalledDriversToLog.IsNonEmpty() && reprap.GetGCodes().IsReallyPrinting())
 			{
 				String<StringLength100> scratchString;
 				ListDrivers(scratchString.GetRef(), stalledDriversToLog);
-				stalledDriversToLog = 0;
-				float liveCoordinates[MaxAxesPlusExtruders];
-				reprap.GetMove().LiveCoordinates(liveCoordinates, reprap.GetCurrentTool());
-				MessageF(WarningMessage, "Driver(s)%s stalled at Z height %.2f", scratchString.c_str(), (double)liveCoordinates[Z_AXIS]);
+				stalledDriversToLog.Clear();
+				MessageF(WarningMessage, "Driver(s)%s stalled at Z height %.2f", scratchString.c_str(), (double)reprap.GetMove().LiveCoordinate(Z_AXIS, reprap.GetCurrentTool()));
 				reported = true;
 			}
 #endif
@@ -1302,22 +1365,14 @@ void Platform::Spin() noexcept
 // Sets 'reported' if we reported anything, else leaves 'reported' alone.
 void Platform::ReportDrivers(MessageType mt, DriversBitmap& whichDrivers, const char* text, bool& reported) noexcept
 {
-	if (whichDrivers != 0)
+	if (whichDrivers.IsNonEmpty())
 	{
 		String<StringLength100> scratchString;
 		scratchString.printf("%s reported by driver(s)", text);
-		DriversBitmap wd = whichDrivers;
-		for (unsigned int drive = 0; wd != 0; ++drive)
-		{
-			if ((wd & 1) != 0)
-			{
-				scratchString.catf(" %u", drive);
-			}
-			wd >>= 1;
-		}
+		whichDrivers.Iterate([&scratchString](unsigned int drive, bool) noexcept { scratchString.catf(" %u", drive); });
 		MessageF(mt, "%s\n", scratchString.c_str());
 		reported = true;
-		whichDrivers = 0;
+		whichDrivers.Clear();
 	}
 }
 
@@ -2131,22 +2186,21 @@ GCodeResult Platform::DiagnosticTest(GCodeBuffer& gb, const StringRef& reply, un
 #if HAS_SMART_DRIVERS
 
 // This is called when a fan that monitors driver temperatures is turned on when it was off
-void Platform::DriverCoolingFansOnOff(uint32_t driverChannelsMonitored, bool on) noexcept
+void Platform::DriverCoolingFansOnOff(DriverChannelsBitmap driverChannelsMonitored, bool on) noexcept
 {
-	for (unsigned int i = 0; i < NumTmcDriversSenseChannels; ++i)
-	{
-		if ((driverChannelsMonitored & (1 << i)) != 0)
-		{
-			if (on)
+	driverChannelsMonitored.Iterate
+		([this, on](unsigned int i, bool) noexcept
 			{
-				driversFanTimers[i].Start();
+				if (on)
+				{
+					this->driversFanTimers[i].Start();
+				}
+				else
+				{
+					this->driversFanTimers[i].Stop();
+				}
 			}
-			else
-			{
-				driversFanTimers[i].Stop();
-			}
-		}
-	}
+		);
 }
 
 #endif
@@ -2166,7 +2220,7 @@ int Platform::GetAveragingFilterIndex(const IoPort& port) const noexcept
 
 void Platform::UpdateConfiguredHeaters() noexcept
 {
-	configuredHeaters = 0;
+	configuredHeaters.Clear();
 
 	// Check bed heaters
 	for (size_t i = 0; i < MaxBedHeaters; i++)
@@ -2174,7 +2228,7 @@ void Platform::UpdateConfiguredHeaters() noexcept
 		const int8_t bedHeater = reprap.GetHeat().GetBedHeater(i);
 		if (bedHeater >= 0)
 		{
-			SetBit(configuredHeaters, bedHeater);
+			configuredHeaters.SetBit(bedHeater);
 		}
 	}
 
@@ -2184,7 +2238,7 @@ void Platform::UpdateConfiguredHeaters() noexcept
 		const int8_t chamberHeater = reprap.GetHeat().GetChamberHeater(i);
 		if (chamberHeater >= 0)
 		{
-			SetBit(configuredHeaters, chamberHeater);
+			configuredHeaters.SetBit(chamberHeater);
 		}
 	}
 
@@ -2193,7 +2247,7 @@ void Platform::UpdateConfiguredHeaters() noexcept
 	{
 		if (reprap.IsHeaterAssignedToTool(heater))
 		{
-			SetBit(configuredHeaters, heater);
+			configuredHeaters.SetBit(heater);
 		}
 	}
 }
@@ -2204,7 +2258,7 @@ void Platform::UpdateConfiguredHeaters() noexcept
 bool Platform::WritePlatformParameters(FileStore *f, bool includingG31) const noexcept
 {
 	bool ok;
-	if (axisMinimaProbed != 0 || axisMaximaProbed != 0)
+	if (axisMinimaProbed.IsNonEmpty() || axisMaximaProbed.IsNonEmpty())
 	{
 		ok = f->Write("; Probed axis limits\n");
 		if (ok)
@@ -2231,20 +2285,14 @@ bool Platform::WritePlatformParameters(FileStore *f, bool includingG31) const no
 
 bool Platform::WriteAxisLimits(FileStore *f, AxesBitmap axesProbed, const float limits[MaxAxes], int sParam) noexcept
 {
-	if (axesProbed == 0)
+	if (axesProbed.IsEmpty())
 	{
 		return true;
 	}
 
 	String<StringLength100> scratchString;
 	scratchString.printf("M208 S%d", sParam);
-	for (size_t axis = 0; axis < reprap.GetGCodes().GetTotalAxes(); ++axis)
-	{
-		if (IsBitSet(axesProbed, axis))
-		{
-			scratchString.catf(" %c%.2f", reprap.GetGCodes().GetAxisLetters()[axis], (double)limits[axis]);
-		}
-	}
+	axesProbed.Iterate([&scratchString, limits](unsigned int axis, bool) noexcept { scratchString.catf(" %c%.2f", reprap.GetGCodes().GetAxisLetters()[axis], (double)limits[axis]); });
 	scratchString.cat('\n');
 	return f->Write(scratchString.c_str());
 }
@@ -2775,7 +2823,7 @@ void Platform::SetEnableValue(size_t driver, int8_t eVal) noexcept
 		if (eVal == -1)
 		{
 			// User has asked to disable status monitoring for this driver, so clear its error bits
-			DriversBitmap mask = ~MakeBitmap<DriversBitmap>(driver);
+			const DriversBitmap mask = ~DriversBitmap::MakeFromBits(driver);
 			temperatureShutdownDrivers &= mask;
 			temperatureWarningDrivers &= mask;
 			shortToGroundDrivers &= mask;
@@ -3767,7 +3815,7 @@ void Platform::SetAxisMaximum(size_t axis, float value, bool byProbing) noexcept
 	axisMaxima[axis] = value;
 	if (byProbing)
 	{
-		SetBit(axisMaximaProbed, axis);
+		axisMaximaProbed.SetBit(axis);
 	}
 }
 
@@ -3776,13 +3824,13 @@ void Platform::SetAxisMinimum(size_t axis, float value, bool byProbing) noexcept
 	axisMinima[axis] = value;
 	if (byProbing)
 	{
-		SetBit(axisMinimaProbed, axis);
+		axisMinimaProbed.SetBit(axis);
 	}
 }
 
 ZProbeType Platform::GetCurrentZProbeType() const noexcept
 {
-	return endstops.GetCurrentZProbe().GetProbeType();
+	return endstops.GetCurrentOrDefaultZProbe()->GetProbeType();
 }
 
 void Platform::InitZProbeFilters() noexcept
@@ -3888,24 +3936,24 @@ MinMaxCurrent Platform::GetV12Voltages() const noexcept
 float Platform::GetTmcDriversTemperature(unsigned int board) const noexcept
 {
 #if defined(DUET3)
-	const uint16_t mask = LowestNBits<uint16_t>(6);					// there are 6 drivers, only one board
+	const DriversBitmap mask = DriversBitmap::MakeLowestNBits(6);						// there are 6 drivers, only one board
 #elif defined(DUET_NG)
-	const uint16_t mask = LowestNBits<uint16_t>(5) << (5 * board);	// there are 5 drivers on each board
+	const DriversBitmap mask = DriversBitmap::MakeLowestNBits(5).ShiftUp(5 * board);	// there are 5 drivers on each board
 #elif defined(DUET_M)
-	const uint16_t mask = (board == 0)
-							? LowestNBits<uint16_t>(5)				// drivers 0-4 are on the main board
-								: LowestNBits<uint16_t>(2) << 5;	// drivers 5-6 are on the daughter board
+	const DriversBitmap mask = (board == 0)
+							? DriversBitmap::MakeLowestNBits(5)							// drivers 0-4 are on the main board
+								: DriversBitmap::MakeLowestNBits(2).ShiftUp(5);			// drivers 5-6 are on the daughter board
 #elif defined(PCCB_10)
-	const uint16_t mask = (board == 0)
-							? LowestNBits<uint16_t>(2)				// drivers 0,1 are on-board
-								: LowestNBits<uint16_t>(5) << 2;	// drivers 2-7 are on the DueX5
+	const DriversBitmap mask = (board == 0)
+							? DriversBitmap::MakeLowestNBits(2)							// drivers 0,1 are on-board
+								: DriversBitmap::MakeLowestNBits(5).ShiftUp(2);			// drivers 2-7 are on the DueX5
 #elif defined(PCCB_08_X5)
-	const uint16_t mask = LowestNBits<uint16_t>(5);					// all drivers (0-4) are on the DueX, no further expansion supported
+	const DriversBitmap mask = DriversBitmap::MakeLowestNBits(5);						// all drivers (0-4) are on the DueX, no further expansion supported
 #elif defined(PCCB_08)
-	const uint16_t mask = LowestNBits<uint16_t>(2);					// drivers 0, 1 are on-board, no expansion supported
+	const DriversBitmap mask = DriversBitmap::MakeLowestNBits(2);						// drivers 0, 1 are on-board, no expansion supported
 #endif
-	return ((temperatureShutdownDrivers & mask) != 0) ? 150.0
-			: ((temperatureWarningDrivers & mask) != 0) ? 100.0
+	return (temperatureShutdownDrivers.Intersects(mask)) ? 150.0
+			: (temperatureWarningDrivers.Intersects(mask)) ? 100.0
 				: 0.0;
 }
 
@@ -3918,7 +3966,7 @@ GCodeResult Platform::ConfigureStallDetection(GCodeBuffer& gb, const StringRef& 
 {
 	// Build a bitmap of all the drivers referenced
 	// First looks for explicit driver numbers
-	DriversBitmap drivers = 0;
+	DriversBitmap drivers;
 #if SUPPORT_CAN_EXPANSION
 	CanDriversList canDrivers;
 #endif
@@ -3936,7 +3984,7 @@ GCodeResult Platform::ConfigureStallDetection(GCodeBuffer& gb, const StringRef& 
 					reply.printf("Invalid local drive number '%u'", drives[i].localDriver);
 					return GCodeResult::error;
 				}
-				SetBit(drivers, drives[i].localDriver);
+				drivers.SetBit(drives[i].localDriver);
 			}
 #if SUPPORT_CAN_EXPANSION
 			else
@@ -3953,7 +4001,7 @@ GCodeResult Platform::ConfigureStallDetection(GCodeBuffer& gb, const StringRef& 
 		if (gb.Seen(reprap.GetGCodes().GetAxisLetters()[axis]))
 		{
 			IterateDrivers(axis,
-							[&drivers](uint8_t driver){ SetBit(drivers, driver); }
+							[&drivers](uint8_t driver){ drivers.SetBit(driver); }
 #if SUPPORT_CAN_EXPANSION
 						  , [&canDrivers](DriverId driver){ canDrivers.AddEntry(driver); }
 #endif
@@ -3974,7 +4022,7 @@ GCodeResult Platform::ConfigureStallDetection(GCodeBuffer& gb, const StringRef& 
 				const DriverId driver = GetExtruderDriver(extruderNumbers[i]);
 				if (driver.IsLocal())
 				{
-					SetBit(drivers, driver.localDriver);
+					drivers.SetBit(driver.localDriver);
 				}
 #if SUPPORT_CAN_EXPANSION
 				else
@@ -3992,49 +4040,25 @@ GCodeResult Platform::ConfigureStallDetection(GCodeBuffer& gb, const StringRef& 
 	{
 		seen = true;
 		const int sgThreshold = gb.GetIValue();
-		for (size_t drive = 0; drive < numSmartDrivers; ++drive)
-		{
-			if (IsBitSet(drivers, drive))
-			{
-				SmartDrivers::SetStallThreshold(drive, sgThreshold);
-			}
-		}
+		drivers.Iterate([sgThreshold](unsigned int drive, bool) noexcept { SmartDrivers::SetStallThreshold(drive, sgThreshold); });
 	}
 	if (gb.Seen('F'))
 	{
 		seen = true;
 		const bool sgFilter = (gb.GetIValue() == 1);
-		for (size_t drive = 0; drive < numSmartDrivers; ++drive)
-		{
-			if (IsBitSet(drivers, drive))
-			{
-				SmartDrivers::SetStallFilter(drive, sgFilter);
-			}
-		}
+		drivers.Iterate([sgFilter](unsigned int drive, bool) noexcept { SmartDrivers::SetStallFilter(drive, sgFilter); });
 	}
 	if (gb.Seen('H'))
 	{
 		seen = true;
 		const unsigned int stepsPerSecond = gb.GetUIValue();
-		for (size_t drive = 0; drive < numSmartDrivers; ++drive)
-		{
-			if (IsBitSet(drivers, drive))
-			{
-				SmartDrivers::SetStallMinimumStepsPerSecond(drive, stepsPerSecond);
-			}
-		}
+		drivers.Iterate([stepsPerSecond](unsigned int drive, bool) noexcept { SmartDrivers::SetStallMinimumStepsPerSecond(drive, stepsPerSecond); });
 	}
 	if (gb.Seen('T'))
 	{
 		seen = true;
 		const uint16_t coolStepConfig = (uint16_t)gb.GetUIValue();
-		for (size_t drive = 0; drive < numSmartDrivers; ++drive)
-		{
-			if (IsBitSet(drivers, drive))
-			{
-				SmartDrivers::SetRegister(drive, SmartDriverRegister::coolStep, coolStepConfig);
-			}
-		}
+		drivers.Iterate([coolStepConfig](unsigned int drive, bool) noexcept { SmartDrivers::SetRegister(drive, SmartDriverRegister::coolStep, coolStepConfig); } );
 	}
 	if (gb.Seen('R'))
 	{
@@ -4084,33 +4108,26 @@ GCodeResult Platform::ConfigureStallDetection(GCodeBuffer& gb, const StringRef& 
 		return GCodeResult::notFinished;
 	}
 
-	if (drivers == 0)
+	if (drivers.IsEmpty())
 	{
-		drivers = LowestNBits<DriversBitmap>(numSmartDrivers);
+		drivers = DriversBitmap::MakeLowestNBits(numSmartDrivers);
 	}
 
-	bool printed = false;
-	for (size_t drive = 0; drive < numSmartDrivers; ++drive)
-	{
-		if (IsBitSet(drivers, drive))
-		{
-			if (printed)
+	drivers.Iterate
+		([buf, this, reply](unsigned int drive, bool) noexcept
 			{
-				buf->cat('\n');
+				buf->lcatf("Driver %u: ", drive);
+				reply.Clear();										// we use 'reply' as a temporary buffer
+				SmartDrivers::AppendStallConfig(drive, reply);
+				buf->cat(reply.c_str());
+				buf->catf(", action: %s",
+							(rehomeOnStallDrivers.IsBitSet(drive)) ? "rehome"
+								: (pauseOnStallDrivers.IsBitSet(drive)) ? "pause"
+									: (logOnStallDrivers.IsBitSet(drive)) ? "log"
+										: "none"
+						  );
 			}
-			buf->catf("Driver %u: ", drive);
-			reply.Clear();										// we use 'reply' as a temporary buffer
-			SmartDrivers::AppendStallConfig(drive, reply);
-			buf->cat(reply.c_str());
-			buf->catf(", action: %s",
-						(IsBitSet(rehomeOnStallDrivers, drive)) ? "rehome"
-							: (IsBitSet(pauseOnStallDrivers, drive)) ? "pause"
-								: (IsBitSet(logOnStallDrivers, drive)) ? "log"
-									: "none"
-					  );
-			printed = true;
-		}
-	}
+		);
 
 	return GCodeResult::ok;
 }
@@ -4375,7 +4392,7 @@ void Platform::Tick() noexcept
 	}
 #endif
 
-	const ZProbe& currentZProbe = GetCurrentZProbe();
+	const ZProbe& currentZProbe = endstops.GetCurrentOrDefaultZProbeFromISR();
 	switch (tickState)
 	{
 	case 1:

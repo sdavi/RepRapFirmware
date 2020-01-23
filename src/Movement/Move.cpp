@@ -54,11 +54,18 @@
 // Macro to build a standard lambda function that includes the necessary type conversions
 #define OBJECT_MODEL_FUNC(...) OBJECT_MODEL_FUNC_BODY(Move, __VA_ARGS__)
 
-static const ObjectModelArrayDescriptor axesArrayDescriptor =
+static constexpr ObjectModelArrayDescriptor axesArrayDescriptor =
 {
 	nullptr,					// no lock needed
 	[] (const ObjectModel *self, const ObjectExplorationContext&) noexcept -> size_t { return reprap.GetGCodes().GetVisibleAxes(); },
-	[] (const ObjectModel *self, ObjectExplorationContext& context) noexcept -> ExpressionValue { return ExpressionValue(self, 3); }
+	[] (const ObjectModel *self, ObjectExplorationContext& context) noexcept -> ExpressionValue { return ExpressionValue(&reprap.GetPlatform(), 3); }
+};
+
+static constexpr ObjectModelArrayDescriptor extrudersArrayDescriptor =
+{
+	nullptr,					// no lock needed
+	[] (const ObjectModel *self, const ObjectExplorationContext&) noexcept -> size_t { return reprap.GetGCodes().GetNumExtruders(); },
+	[] (const ObjectModel *self, ObjectExplorationContext& context) noexcept -> ExpressionValue { return ExpressionValue(&reprap.GetPlatform(), 4); }
 };
 
 constexpr ObjectModelTableEntry Move::objectModelTable[] =
@@ -66,51 +73,48 @@ constexpr ObjectModelTableEntry Move::objectModelTable[] =
 	// Within each group, these entries must be in alphabetical order
 	// 0. Move members
 	{ "axes",					OBJECT_MODEL_FUNC_NOSELF(&axesArrayDescriptor), 										ObjectModelEntryFlags::live },
-	{ "calibrationDeviation",	OBJECT_MODEL_FUNC(self, 5),																ObjectModelEntryFlags::none },
-	{ "currentMove",			OBJECT_MODEL_FUNC(self, 4),																ObjectModelEntryFlags::live },
+	{ "calibrationDeviation",	OBJECT_MODEL_FUNC(self, 4),																ObjectModelEntryFlags::none },
+	{ "currentMove",			OBJECT_MODEL_FUNC(self, 3),																ObjectModelEntryFlags::live },
 	{ "daa",					OBJECT_MODEL_FUNC(self, 1),																ObjectModelEntryFlags::none },
+	{ "extruders",				OBJECT_MODEL_FUNC_NOSELF(&extrudersArrayDescriptor),									ObjectModelEntryFlags::none },
 	{ "idle",					OBJECT_MODEL_FUNC(self, 2),																ObjectModelEntryFlags::none },
-	{ "initialDeviation",		OBJECT_MODEL_FUNC(self, 6),																ObjectModelEntryFlags::none },
-	{ "meshDeviation",			OBJECT_MODEL_FUNC(self, 7),																ObjectModelEntryFlags::none },
-	{ "printingAcceleration",	OBJECT_MODEL_FUNC(self->maxPrintingAcceleration),										ObjectModelEntryFlags::none },
-	{ "speedFactor",			OBJECT_MODEL_FUNC_NOSELF(reprap.GetGCodes().GetSpeedFactor()),							ObjectModelEntryFlags::live },
-	{ "travelAcceleration",		OBJECT_MODEL_FUNC(self->maxTravelAcceleration),											ObjectModelEntryFlags::none },
+	{ "initialDeviation",		OBJECT_MODEL_FUNC(self, 5),																ObjectModelEntryFlags::none },
+	{ "kinematics",				OBJECT_MODEL_FUNC(self->kinematics),													ObjectModelEntryFlags::none },
+	{ "meshDeviation",			OBJECT_MODEL_FUNC(self, 6),																ObjectModelEntryFlags::none },
+	{ "printingAcceleration",	OBJECT_MODEL_FUNC(self->maxPrintingAcceleration, 1),									ObjectModelEntryFlags::none },
+	{ "speedFactor",			OBJECT_MODEL_FUNC_NOSELF(reprap.GetGCodes().GetSpeedFactor(), 1),						ObjectModelEntryFlags::live },
+	{ "travelAcceleration",		OBJECT_MODEL_FUNC(self->maxTravelAcceleration, 1),										ObjectModelEntryFlags::none },
+	{ "workspaceNumber",		OBJECT_MODEL_FUNC_NOSELF((int32_t)reprap.GetGCodes().GetWorkplaceCoordinateSystemNumber()),	ObjectModelEntryFlags::none },
 
 	// 1. Move.Daa members
 	{ "enabled", 				OBJECT_MODEL_FUNC(self->drcEnabled), 													ObjectModelEntryFlags::none },
-	{ "minimumAcceleration",	OBJECT_MODEL_FUNC(self->drcMinimumAcceleration),										ObjectModelEntryFlags::none },
-	{ "period",					OBJECT_MODEL_FUNC(self->drcPeriod), 													ObjectModelEntryFlags::none },
+	{ "minimumAcceleration",	OBJECT_MODEL_FUNC(self->drcMinimumAcceleration, 1),										ObjectModelEntryFlags::none },
+	{ "period",					OBJECT_MODEL_FUNC(self->drcPeriod, 1), 													ObjectModelEntryFlags::none },
 
 	// 2. Move.Idle members
-	{ "factor",					OBJECT_MODEL_FUNC_NOSELF(reprap.GetPlatform().GetIdleCurrentFactor()),					ObjectModelEntryFlags::none },
-	{ "timeout",				OBJECT_MODEL_FUNC((int32_t)self->idleTimeout),											ObjectModelEntryFlags::none },
+	{ "factor",					OBJECT_MODEL_FUNC_NOSELF(reprap.GetPlatform().GetIdleCurrentFactor(), 1),				ObjectModelEntryFlags::none },
+	{ "timeout",				OBJECT_MODEL_FUNC(0.001f * (float)self->idleTimeout, 1),								ObjectModelEntryFlags::none },
 
-	// 3. Move.Axis[] members
-	{ "homed",					OBJECT_MODEL_FUNC_NOSELF(reprap.GetGCodes().IsAxisHomed(context.GetLastIndex())),		ObjectModelEntryFlags::live },
-	{ "letter",					OBJECT_MODEL_FUNC_NOSELF(reprap.GetGCodes().GetAxisLetters()[context.GetLastIndex()]),	ObjectModelEntryFlags::none },
-	{ "max",					OBJECT_MODEL_FUNC_NOSELF(reprap.GetPlatform().AxisMaximum(context.GetLastIndex())),		ObjectModelEntryFlags::none },
-	{ "min",					OBJECT_MODEL_FUNC_NOSELF(reprap.GetPlatform().AxisMinimum(context.GetLastIndex())),		ObjectModelEntryFlags::none },
-	{ "userPosition",			OBJECT_MODEL_FUNC_NOSELF(reprap.GetGCodes().GetUserCoordinate(context.GetLastIndex()), 3), ObjectModelEntryFlags::live },
-	{ "visible",				OBJECT_MODEL_FUNC_NOSELF(context.GetLastIndex() < (int32_t)reprap.GetGCodes().GetVisibleAxes()), ObjectModelEntryFlags::none },
+	// 3. move.currentMove members
+	{ "acceleration",			OBJECT_MODEL_FUNC(self->GetAcceleration(), 1),											ObjectModelEntryFlags::live },
+	{ "deceleration",			OBJECT_MODEL_FUNC(self->GetDeceleration(), 1),											ObjectModelEntryFlags::live },
+	{ "requestedSpeed",			OBJECT_MODEL_FUNC(self->GetRequestedSpeed(), 1),										ObjectModelEntryFlags::live },
+	{ "topSpeed",				OBJECT_MODEL_FUNC(self->GetTopSpeed(), 1),												ObjectModelEntryFlags::live },
 
-	// 4. move.currentMove members
-	{ "requestedSpeed",			OBJECT_MODEL_FUNC(self->GetRequestedSpeed()),											ObjectModelEntryFlags::live },
-	{ "topSpeed",				OBJECT_MODEL_FUNC(self->GetTopSpeed()),													ObjectModelEntryFlags::live },
-
-	// 5. move.calibrationDeviation members
+	// 4. move.calibrationDeviation members
 	{ "deviation",				OBJECT_MODEL_FUNC(self->latestCalibrationDeviation.GetDeviationFromMean(), 3),			ObjectModelEntryFlags::none },
 	{ "mean",					OBJECT_MODEL_FUNC(self->latestCalibrationDeviation.GetMean(), 3),						ObjectModelEntryFlags::none },
 
-	// 6. move.initialDeviation members
+	// 5. move.initialDeviation members
 	{ "deviation",				OBJECT_MODEL_FUNC(self->initialCalibrationDeviation.GetDeviationFromMean(), 3),			ObjectModelEntryFlags::none },
 	{ "mean",					OBJECT_MODEL_FUNC(self->initialCalibrationDeviation.GetMean(), 3),						ObjectModelEntryFlags::none },
 
-	// 7. move.meshDeviation members
+	// 6. move.meshDeviation members
 	{ "deviation",				OBJECT_MODEL_FUNC(self->latestMeshDeviation.GetDeviationFromMean(), 3),					ObjectModelEntryFlags::none },
 	{ "mean",					OBJECT_MODEL_FUNC(self->latestMeshDeviation.GetMean(), 3),								ObjectModelEntryFlags::none },
 };
 
-constexpr uint8_t Move::objectModelTableDescriptor[] = { 8, 10, 3, 2, 6, 2, 2, 2, 2 };
+constexpr uint8_t Move::objectModelTableDescriptor[] = { 7, 13, 3, 2, 4, 2, 2, 2 };
 
 DEFINE_GET_OBJECT_MODEL_TABLE(Move)
 
@@ -158,7 +162,7 @@ void Move::Init() noexcept
 
 	simulationMode = 0;
 	longestGcodeWaitInterval = 0;
-	bedLevellingMoveAvailable = false;
+	bedLevellingMoveAvailable = liveCoordinatesUpToDate = false;
 
 	active = true;
 }
@@ -343,8 +347,13 @@ bool Move::IsRawMotorMove(uint8_t moveType) const noexcept
 // Return true if the specified point is accessible to the Z probe
 bool Move::IsAccessibleProbePoint(float x, float y) const noexcept
 {
-	const ZProbe& params = reprap.GetPlatform().GetCurrentZProbe();
-	return kinematics->IsReachable(x - params.GetXOffset(), y - params.GetYOffset(), false);
+	const auto zp = reprap.GetPlatform().GetCurrentZProbe();
+	if (zp.IsNotNull())
+	{
+		x -= zp->GetXOffset();
+		y -= zp->GetYOffset();
+	}
+	return kinematics->IsReachable(x, y, false);
 }
 
 // Pause the print as soon as we can, returning true if we are able to skip any moves and updating 'rp' to the first move we skipped.
@@ -441,7 +450,7 @@ void Move::SetNewPosition(const float positionNow[MaxAxesPlusExtruders], bool do
 	memcpy(newPos, positionNow, sizeof(newPos));			// copy to local storage because Transform modifies it
 	AxisAndBedTransform(newPos, reprap.GetCurrentTool(), doBedCompensation);
 	SetLiveCoordinates(newPos);
-	SetPositions(newPos);
+	mainDDARing.SetPositions(newPos);
 }
 
 // This may be called from an ISR, e.g. via Kinematics::OnHomingSwitchTriggered and DDA::SetPositions
@@ -531,18 +540,18 @@ void Move::AxisTransform(float xyzPoint[MaxAxes], const Tool *tool) const noexce
 	// Identify the lowest Y axis
 	const size_t numVisibleAxes = reprap.GetGCodes().GetVisibleAxes();
 	const AxesBitmap yAxes = Tool::GetYAxes(tool);
-	const size_t lowestYAxis = LowestSetBit(yAxes);
+	const size_t lowestYAxis = yAxes.LowestSetBit();
 	if (lowestYAxis < numVisibleAxes)
 	{
 		// Found a Y axis. Use this one when correcting the X coordinate.
 		const AxesBitmap xAxes = Tool::GetXAxes(tool);
 		for (size_t axis = 0; axis < numVisibleAxes; ++axis)
 		{
-			if (IsBitSet(xAxes, axis))
+			if (xAxes.IsBitSet(axis))
 			{
 				xyzPoint[axis] += tanXY*xyzPoint[lowestYAxis] + tanXZ*xyzPoint[Z_AXIS];
 			}
-			if (IsBitSet(yAxes, axis))
+			if (yAxes.IsBitSet(axis))
 			{
 				xyzPoint[axis] += tanYZ*xyzPoint[Z_AXIS];
 			}
@@ -562,18 +571,18 @@ void Move::InverseAxisTransform(float xyzPoint[MaxAxes], const Tool *tool) const
 	// Identify the lowest Y axis
 	const size_t numVisibleAxes = reprap.GetGCodes().GetVisibleAxes();
 	const AxesBitmap yAxes = Tool::GetYAxes(tool);
-	const size_t lowestYAxis = LowestSetBit(yAxes);
+	const size_t lowestYAxis = yAxes.LowestSetBit();
 	if (lowestYAxis < numVisibleAxes)
 	{
 		// Found a Y axis. Use this one when correcting the X coordinate.
 		const AxesBitmap xAxes = Tool::GetXAxes(tool);
 		for (size_t axis = 0; axis < numVisibleAxes; ++axis)
 		{
-			if (IsBitSet(yAxes, axis))
+			if (yAxes.IsBitSet(axis))
 			{
 				xyzPoint[axis] -= tanYZ*xyzPoint[Z_AXIS];
 			}
-			if (IsBitSet(xAxes, axis))
+			if (xAxes.IsBitSet(axis))
 			{
 				xyzPoint[axis] -= (tanXY*xyzPoint[lowestYAxis] + tanXZ*xyzPoint[Z_AXIS]);
 			}
@@ -595,12 +604,12 @@ void Move::BedTransform(float xyzPoint[MaxAxes], const Tool *tool) const noexcep
 		// Transform the Z coordinate based on the average correction for each axis used as an X or Y axis.
 		for (uint32_t xAxis = 0; xAxis < numAxes; ++xAxis)
 		{
-			if (IsBitSet(xAxes, xAxis))
+			if (xAxes.IsBitSet(xAxis))
 			{
 				const float xCoord = xyzPoint[xAxis] + Tool::GetOffset(tool, xAxis);
 				for (uint32_t yAxis = 0; yAxis < numAxes; ++yAxis)
 				{
-					if (IsBitSet(yAxes, yAxis))
+					if (yAxes.IsBitSet(yAxis))
 					{
 						const float yCoord = xyzPoint[yAxis] + Tool::GetOffset(tool, yAxis);
 						zCorrection += GetInterpolatedHeightError(xCoord, yCoord);
@@ -632,12 +641,12 @@ void Move::InverseBedTransform(float xyzPoint[MaxAxes], const Tool *tool) const 
 	// Transform the Z coordinate based on the average correction for each axis used as an X or Y axis.
 	for (uint32_t xAxis = 0; xAxis < numAxes; ++xAxis)
 	{
-		if (IsBitSet(xAxes, xAxis))
+		if (xAxes.IsBitSet(xAxis))
 		{
 			const float xCoord = xyzPoint[xAxis] + Tool::GetOffset(tool, xAxis);
 			for (uint32_t yAxis = 0; yAxis < numAxes; ++yAxis)
 			{
-				if (IsBitSet(yAxes, yAxis))
+				if (yAxes.IsBitSet(yAxis))
 				{
 					const float yCoord = xyzPoint[yAxis] + Tool::GetOffset(tool, yAxis);
 					zCorrection += GetInterpolatedHeightError(xCoord, yCoord);
@@ -863,9 +872,12 @@ float Move::GetProbeCoordinates(int count, float& x, float& y, bool wantNozzlePo
 	y = probePoints.GetYCoord(count);
 	if (wantNozzlePosition)
 	{
-		const ZProbe& rp = reprap.GetPlatform().GetCurrentZProbe();
-		x -= rp.GetXOffset();
-		y -= rp.GetYOffset();
+		const auto zp = reprap.GetPlatform().GetCurrentZProbe();
+		if (zp.IsNotNull())
+		{
+			x -= zp->GetXOffset();
+			y -= zp->GetYOffset();
+		}
 	}
 	return probePoints.GetZHeight(count);
 }
@@ -979,6 +991,19 @@ GCodeResult Move::ConfigureDynamicAcceleration(GCodeBuffer& gb, const StringRef&
 		}
 	}
 	return GCodeResult::ok;
+}
+
+// Return the current live XYZ and extruder coordinates
+// Interrupts are assumed enabled on entry
+float Move::LiveCoordinate(unsigned int axisOrExtruder, const Tool *tool) noexcept
+{
+	if (!liveCoordinatesUpToDate)
+	{
+		mainDDARing.LiveCoordinates(latestLiveCoordinates);
+		InverseAxisAndBedTransform(latestLiveCoordinates, tool);
+		liveCoordinatesUpToDate = true;
+	}
+	return latestLiveCoordinates[axisOrExtruder];
 }
 
 #if SUPPORT_LASER || SUPPORT_IOBITS

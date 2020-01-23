@@ -8,16 +8,17 @@
 #ifndef SRC_ENDSTOPS_ENDSTOP_H_
 #define SRC_ENDSTOPS_ENDSTOP_H_
 
-#include "RepRapFirmware.h"
+#include <RepRapFirmware.h>
+#include <ObjectModel/ObjectModel.h>
 #include "EndstopDefs.h"
-#include "Hardware/IoPorts.h"
+#include <Hardware/IoPorts.h>
 #include <General/FreelistManager.h>
 
 class AxisDriversConfig;
 class CanMessageBuffer;
 
 // This is the base class for all types of endstops and for ZProbe.
-class EndstopOrZProbe
+class EndstopOrZProbe INHERIT_OBJECT_MODEL
 {
 public:
 	EndstopOrZProbe() noexcept : next(nullptr) {}
@@ -30,7 +31,7 @@ public:
 	EndstopOrZProbe *GetNext() const noexcept { return next; }
 	void SetNext(EndstopOrZProbe *e) noexcept { next = e; }
 
-	static void UpdateStalledDrivers(uint32_t driverMask, bool isStalled) noexcept;
+	static void UpdateStalledDrivers(DriversBitmap drivers, bool isStalled) noexcept;
 
 protected:
 	static DriversBitmap GetStalledDrivers() noexcept { return stalledDrivers; }
@@ -41,15 +42,15 @@ private:
 	static DriversBitmap stalledDrivers;				// used to track which drivers are reported as stalled, for stall detect endstops and stall detect Z probes
 };
 
-inline void EndstopOrZProbe::UpdateStalledDrivers(uint32_t driverMask, bool isStalled) noexcept
+inline void EndstopOrZProbe::UpdateStalledDrivers(DriversBitmap drivers, bool isStalled) noexcept
 {
 	if (isStalled)
 	{
-		stalledDrivers |= driverMask;
+		stalledDrivers |= drivers;
 	}
 	else
 	{
-		stalledDrivers &= ~driverMask;
+		stalledDrivers &= ~drivers;
 	}
 }
 
@@ -72,6 +73,7 @@ public:
 protected:
 	Endstop(uint8_t axis, EndStopPosition pos) noexcept;
 
+	DECLARE_OBJECT_MODEL
 
 private:
 	uint8_t axis;										// which axis this endstop is on

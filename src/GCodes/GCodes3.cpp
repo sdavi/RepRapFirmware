@@ -40,7 +40,7 @@
 #include "Wire.h"
 
 // Deal with G60
-GCodeResult GCodes::SavePosition(GCodeBuffer& gb, const StringRef& reply)
+GCodeResult GCodes::SavePosition(GCodeBuffer& gb, const StringRef& reply) noexcept
 {
 	const uint32_t sParam = (gb.Seen('S')) ? gb.GetUIValue() : 0;
 	if (sParam < ARRAY_SIZE(numberedRestorePoints))
@@ -59,20 +59,20 @@ GCodeResult GCodes::SetPositions(GCodeBuffer& gb)
 {
 	// Don't wait for the machine to stop if only extruder drives are being reset.
 	// This avoids blobs and seams when the gcode uses absolute E coordinates and periodically includes G92 E0.
-	AxesBitmap axesIncluded = 0;
+	AxesBitmap axesIncluded;
 	for (size_t axis = 0; axis < numVisibleAxes; ++axis)
 	{
 		if (gb.Seen(axisLetters[axis]))
 		{
 			const float axisValue = gb.GetFValue();
-			if (axesIncluded == 0)
+			if (axesIncluded.IsEmpty())
 			{
 				if (!LockMovementAndWaitForStandstill(gb))	// lock movement and get current coordinates
 				{
 					return GCodeResult::notFinished;
 				}
 			}
-			SetBit(axesIncluded, axis);
+			axesIncluded.SetBit(axis);
 			currentUserPosition[axis] = gb.ConvertDistance(axisValue);
 		}
 	}
@@ -83,10 +83,10 @@ GCodeResult GCodes::SetPositions(GCodeBuffer& gb)
 		virtualExtruderPosition = gb.GetDistance();
 	}
 
-	if (axesIncluded != 0)
+	if (axesIncluded.IsNonEmpty())
 	{
 		ToolOffsetTransform(currentUserPosition, moveBuffer.coords);
-		if (reprap.GetMove().GetKinematics().LimitPosition(moveBuffer.coords, nullptr, numVisibleAxes, LowestNBits<AxesBitmap>(numVisibleAxes), false, limitAxes)
+		if (reprap.GetMove().GetKinematics().LimitPosition(moveBuffer.coords, nullptr, numVisibleAxes, AxesBitmap::MakeLowestNBits(numVisibleAxes), false, limitAxes)
 			!= LimitPositionResult::ok												// pretend that all axes are homed
 		   )
 		{
@@ -94,7 +94,7 @@ GCodeResult GCodes::SetPositions(GCodeBuffer& gb)
 		}
 		reprap.GetMove().SetNewPosition(moveBuffer.coords, true);
 		axesHomed |= reprap.GetMove().GetKinematics().AxesAssumedHomed(axesIncluded);
-		if (IsBitSet(axesIncluded, Z_AXIS))
+		if (axesIncluded.IsBitSet(Z_AXIS))
 		{
 			zDatumSetByProbing -= false;
 		}
@@ -126,12 +126,7 @@ GCodeResult GCodes::OffsetAxes(GCodeBuffer& gb, const StringRef& reply)
 	{
 		if (gb.Seen(axisLetters[axis]))
 		{
-#if SUPPORT_WORKPLACE_COORDINATES
-			workplaceCoordinates[currentCoordinateSystem][axis]
-#else
-			axisOffsets[axis]
-#endif
-						 = -gb.GetDistance();
+			workplaceCoordinates[currentCoordinateSystem][axis] = -gb.GetDistance();
 			seen = true;
 		}
 	}
@@ -141,13 +136,7 @@ GCodeResult GCodes::OffsetAxes(GCodeBuffer& gb, const StringRef& reply)
 		reply.printf("Axis offsets:");
 		for (size_t axis = 0; axis < numVisibleAxes; axis++)
 		{
-			reply.catf(" %c%.2f", axisLetters[axis],
-#if SUPPORT_WORKPLACE_COORDINATES
-				-(double)(gb.InverseConvertDistance(workplaceCoordinates[0][axis]))
-#else
-				-(double)(gb.InverseConvertDistance(axisOffsets[axis]))
-#endif
-													 );
+			reply.catf(" %c%.2f", axisLetters[axis], -(double)(gb.InverseConvertDistance(workplaceCoordinates[0][axis])));
 		}
 	}
 
@@ -197,7 +186,7 @@ GCodeResult GCodes::GetSetWorkplaceCoordinates(GCodeBuffer& gb, const StringRef&
 # if HAS_MASS_STORAGE
 
 // Save all the workplace coordinate offsets to file returning true if successful. Used by M500 and by SaveResumeInfo.
-bool GCodes::WriteWorkplaceCoordinates(FileStore *f) const
+bool GCodes::WriteWorkplaceCoordinates(FileStore *f) const noexcept
 {
 	if (!f->Write("; Workplace coordinates\n"))
 	{
@@ -383,7 +372,7 @@ GCodeResult GCodes::SimulateFile(GCodeBuffer& gb, const StringRef &reply, const 
 		if (simulationMode == 0)
 		{
 			axesHomedBeforeSimulation = axesHomed;
-			axesHomed = LowestNBits<AxesBitmap>(numVisibleAxes);	// pretend all axes are homed
+			axesHomed = AxesBitmap::MakeLowestNBits(numVisibleAxes);	// pretend all axes are homed
 			SavePosition(simulationRestorePoint, gb);
 			simulationRestorePoint.feedRate = gb.MachineState().feedRate;
 		}
@@ -421,7 +410,7 @@ GCodeResult GCodes::ChangeSimulationMode(GCodeBuffer& gb, const StringRef &reply
 			{
 				// Starting a new simulation, so save the current position
 				axesHomedBeforeSimulation = axesHomed;
-				axesHomed = LowestNBits<AxesBitmap>(numVisibleAxes);	// pretend all axes are homed
+				axesHomed = AxesBitmap::MakeLowestNBits(numVisibleAxes);	// pretend all axes are homed
 				SavePosition(simulationRestorePoint, gb);
 			}
 			simulationTime = 0.0;
@@ -502,7 +491,7 @@ GCodeResult GCodes::ConfigureTrigger(GCodeBuffer& gb, const StringRef& reply, in
 					return GCodeResult::error;
 				}
 
-				tr.inputStates = 0;
+				tr.inputStates.Clear();
 				(void)tr.Check();					// set up initial input states
 				return GCodeResult::ok;
 			}
@@ -542,10 +531,10 @@ GCodeResult GCodes::CheckTrigger(GCodeBuffer& gb, const StringRef& reply, int co
 		if (triggerNumber < MaxTriggers)
 		{
 			Trigger& tr = triggers[triggerNumber];
-			tr.inputStates = 0;
+			tr.inputStates.Clear();
 			if (tr.Check())
 			{
-				SetBit(triggersPending, triggerNumber);
+				triggersPending.SetBit(triggerNumber);
 			}
 			return GCodeResult::ok;
 		}
@@ -561,7 +550,7 @@ GCodeResult GCodes::CheckTrigger(GCodeBuffer& gb, const StringRef& reply, int co
 }
 
 // Deal with a M584
-GCodeResult GCodes::DoDriveMapping(GCodeBuffer& gb, const StringRef& reply)
+GCodeResult GCodes::DoDriveMapping(GCodeBuffer& gb, const StringRef& reply) noexcept
 {
 	if (!LockMovementAndWaitForStandstill(gb))				// we also rely on this to retrieve the current motor positions to moveBuffer
 	{
@@ -769,7 +758,7 @@ GCodeResult GCodes::StraightProbe(GCodeBuffer& gb, const StringRef& reply)
 	const size_t probeToUse = gb.Seen('P') ? gb.GetUIValue() : platform.GetEndstops().GetCurrentZProbeNumber();
 
 	// Check if this probe exists to not run into a nullptr dereference later
-	if (platform.GetEndstops().GetZProbe(probeToUse) == nullptr)
+	if (platform.GetEndstops().GetZProbe(probeToUse).IsNull())
 	{
 		reply.catf("Invalid probe number: %d", probeToUse);
 		return GCodeResult::error;
@@ -800,7 +789,7 @@ GCodeResult GCodes::ProbeTool(GCodeBuffer& gb, const StringRef& reply)
 	if (useProbe)
 	{
 		probeNumberToUse = gb.GetUIValue();
-		if (platform.GetEndstops().GetZProbe(probeNumberToUse) == nullptr)
+		if (platform.GetEndstops().GetZProbe(probeNumberToUse).IsNull())
 		{
 			reply.copy("Invalid probe number");
 			return GCodeResult::error;
@@ -841,7 +830,7 @@ GCodeResult GCodes::ProbeTool(GCodeBuffer& gb, const StringRef& reply)
 
 			const bool probeOk = (useProbe)
 									? platform.GetEndstops().EnableZProbe(probeNumberToUse)
-										: platform.GetEndstops().EnableAxisEndstops(MakeBitmap<AxesBitmap>(axis), false);
+										: platform.GetEndstops().EnableAxisEndstops(AxesBitmap::MakeFromBits(axis), false);
 			if (!probeOk)
 			{
 				reply.copy("Failed to prime endstop or probe");
@@ -879,7 +868,7 @@ GCodeResult GCodes::FindCenterOfCavity(GCodeBuffer& gb, const StringRef& reply, 
 	if (useProbe)
 	{
 		probeNumberToUse = gb.GetUIValue();
-		if (platform.GetEndstops().GetZProbe(probeNumberToUse) == nullptr)
+		if (platform.GetEndstops().GetZProbe(probeNumberToUse).IsNull())
 		{
 			reply.copy("Invalid probe number");
 			return GCodeResult::error;
@@ -905,7 +894,7 @@ GCodeResult GCodes::FindCenterOfCavity(GCodeBuffer& gb, const StringRef& reply, 
 
 			const bool probeOk = (useProbe)
 									? platform.GetEndstops().EnableZProbe(probeNumberToUse)
-										: platform.GetEndstops().EnableAxisEndstops(MakeBitmap<AxesBitmap>(axis), false);
+										: platform.GetEndstops().EnableAxisEndstops(AxesBitmap::MakeFromBits(axis), false);
 			if (!probeOk)
 			{
 				reply.copy("Failed to prime endstop or probe");
@@ -934,7 +923,7 @@ GCodeResult GCodes::FindCenterOfCavity(GCodeBuffer& gb, const StringRef& reply, 
 }
 
 // Deal with a M905
-GCodeResult GCodes::SetDateTime(GCodeBuffer& gb, const StringRef& reply)
+GCodeResult GCodes::SetDateTime(GCodeBuffer& gb, const StringRef& reply) noexcept
 {
 	tm timeInfo;
 	(void)platform.GetDateTime(timeInfo);
@@ -1180,7 +1169,7 @@ GCodeResult GCodes::ReceiveI2c(GCodeBuffer& gb, const StringRef &reply)
 }
 
 // Deal with M569
-GCodeResult GCodes::ConfigureDriver(GCodeBuffer& gb, const StringRef& reply)
+GCodeResult GCodes::ConfigureDriver(GCodeBuffer& gb, const StringRef& reply) noexcept
 {
 	if (gb.Seen('P'))
 	{
@@ -1389,7 +1378,7 @@ GCodeResult GCodes::ConfigureDriver(GCodeBuffer& gb, const StringRef& reply)
 }
 
 // Change a live extrusion factor
-void GCodes::ChangeExtrusionFactor(unsigned int extruder, float factor)
+void GCodes::ChangeExtrusionFactor(unsigned int extruder, float factor) noexcept
 {
 	if (segmentsLeft != 0 && !moveBuffer.isFirmwareRetraction)
 	{

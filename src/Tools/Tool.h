@@ -26,8 +26,10 @@ Licence: GPL
 #ifndef TOOL_H_
 #define TOOL_H_
 
-#include "RepRapFirmware.h"
+#include <RepRapFirmware.h>
+#include <ObjectModel/ObjectModel.h>
 #include <General/FreelistManager.h>
+#include <NamedEnum.h>
 
 #undef array
 #include <functional>
@@ -35,22 +37,19 @@ Licence: GPL
 
 constexpr size_t ToolNameLength = 32;						// maximum allowed length for tool names
 
-enum class ToolState : uint8_t
-{
-	off = 0,
-	active,
-	standby
-};
+NamedEnum(ToolState, uint8_t, off, active, standby);
 
 class Filament;
 
-class Tool
+class Tool INHERIT_OBJECT_MODEL
 {
 public:
+	friend class RepRap;
+
 	void* operator new(size_t sz) noexcept { return FreelistManager::Allocate<Tool>(); }
 	void operator delete(void* p) noexcept { FreelistManager::Release<Tool>(p); }
 
-	~Tool() noexcept { delete name; }
+	~Tool() override { delete name; }
 
 	static Tool *Create(unsigned int toolNumber, const char *name, int32_t d[], size_t dCount, int32_t h[], size_t hCount, AxesBitmap xMap, AxesBitmap yMap, FansBitmap fanMap, int filamentDrive, const StringRef& reply) noexcept;
 	static void Delete(Tool *t) noexcept { delete t; }
@@ -71,8 +70,8 @@ public:
 	void DefineMix(const float m[]) noexcept;
 	const float* GetMix() const noexcept;
 	void Print(const StringRef& reply) const noexcept;
-	AxesBitmap GetXAxisMap() const noexcept { return xMapping; }
-	AxesBitmap GetYAxisMap() const noexcept { return yMapping; }
+	AxesBitmap GetXAxisMap() const noexcept { return axisMapping[0]; }
+	AxesBitmap GetYAxisMap() const noexcept { return axisMapping[1]; }
 	FansBitmap GetFanMapping() const noexcept { return fanMapping; }
 	Filament *GetFilament() const noexcept { return filament; }
 	Tool *Next() const noexcept { return next; }
@@ -92,18 +91,25 @@ public:
 	void IterateExtruders(std::function<void(unsigned int)> f) const noexcept;
 	void IterateHeaters(std::function<void(int)> f) const noexcept;
 
-	friend class RepRap;
-
 protected:
+	DECLARE_OBJECT_MODEL
+	OBJECT_MODEL_ARRAY(activeTemps)
+	OBJECT_MODEL_ARRAY(axes)
+	OBJECT_MODEL_ARRAY(extruders)
+	OBJECT_MODEL_ARRAY(heaters)
+	OBJECT_MODEL_ARRAY(mix)
+	OBJECT_MODEL_ARRAY(offsets)
+	OBJECT_MODEL_ARRAY(standbyTemps)
+
 	void Activate() noexcept;
 	void Standby() noexcept;
 	void FlagTemperatureFault(int8_t dudHeater) noexcept;
 	void ClearTemperatureFault(int8_t wasDudHeater) noexcept;
-	void UpdateExtruderAndHeaterCount(uint16_t &extruders, uint16_t &heaters) const noexcept;
+	void UpdateExtruderAndHeaterCount(uint16_t &extruders, uint16_t &heaters, uint16_t &numToolsToReport) const noexcept;
 	bool DisplayColdExtrudeWarning() noexcept;
 
 private:
-	Tool() noexcept : next(nullptr), filament(nullptr), name(nullptr) { }
+	Tool() noexcept : next(nullptr), filament(nullptr), name(nullptr), state(ToolState::off) { }
 
 	void SetTemperatureFault(int8_t dudHeater) noexcept;
 	void ResetTemperatureFault(int8_t wasDudHeater) noexcept;
@@ -120,7 +126,7 @@ private:
 	uint8_t driveCount;
 	uint8_t heaterCount;
 	uint16_t myNumber;
-	AxesBitmap xMapping, yMapping;
+	AxesBitmap axisMapping[2];
 	AxesBitmap axisOffsetsProbed;
 	FansBitmap fanMapping;
 	uint8_t drives[MaxExtrudersPerTool];

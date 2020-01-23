@@ -20,15 +20,15 @@ ZProbeEndstop::ZProbeEndstop(uint8_t axis, EndStopPosition pos) noexcept : Endst
 // Test whether we are at or near the stop
 EndStopHit ZProbeEndstop::Stopped() const noexcept
 {
-	const ZProbe * const zp = reprap.GetPlatform().GetEndstops().GetZProbe(zProbeNumber);
-	return (zp != nullptr) ? zp->Stopped() : EndStopHit::atStop;
+	const auto zp = reprap.GetPlatform().GetEndstops().GetZProbe(zProbeNumber);
+	return (zp.IsNotNull()) ? zp->Stopped() : EndStopHit::atStop;
 }
 
 // This is called to prime axis endstops
 bool ZProbeEndstop::Prime(const Kinematics& kin, const AxisDriversConfig& axisDrivers) noexcept
 {
 	// Decide whether we stop just the driver, just the axis, or everything
-	stopAll = (kin.GetConnectedAxes(GetAxis()) & ~MakeBitmap<AxesBitmap>(GetAxis())) != 0;
+	stopAll = kin.GetConnectedAxes(GetAxis()).Intersects(~AxesBitmap::MakeFromBits(GetAxis()));
 
 #if SUPPORT_CAN_EXPANSION
 	//TODO if the Z probe is remote, check that the expansion board knows about it

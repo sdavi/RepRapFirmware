@@ -31,6 +31,86 @@
 #include "Platform.h"
 #include "RepRap.h"
 
+#if SUPPORT_OBJECT_MODEL
+
+// Object model table and functions
+// Note: if using GCC version 7.3.1 20180622 and lambda functions are used in this table, you must compile this file with option -std=gnu++17.
+// Otherwise the table will be allocated in RAM instead of flash, which wastes too much RAM.
+
+// Macro to build a standard lambda function that includes the necessary type conversions
+#define OBJECT_MODEL_FUNC(...) OBJECT_MODEL_FUNC_BODY(Tool, __VA_ARGS__)
+
+constexpr ObjectModelArrayDescriptor Tool::activeTempsArrayDescriptor =
+{
+	nullptr,					// no lock needed
+	[] (const ObjectModel *self, const ObjectExplorationContext&) noexcept -> size_t { return ((const Tool*)self)->heaterCount; },
+	[] (const ObjectModel *self, ObjectExplorationContext& context) noexcept -> ExpressionValue { return ExpressionValue(((const Tool*)self)->activeTemperatures[context.GetLastIndex()], 1); }
+};
+
+constexpr ObjectModelArrayDescriptor Tool::standbyTempsArrayDescriptor =
+{
+	nullptr,					// no lock needed
+	[] (const ObjectModel *self, const ObjectExplorationContext&) noexcept -> size_t { return ((const Tool*)self)->heaterCount; },
+	[] (const ObjectModel *self, ObjectExplorationContext& context) noexcept -> ExpressionValue { return ExpressionValue(((const Tool*)self)->standbyTemperatures[context.GetLastIndex()], 1); }
+};
+
+constexpr ObjectModelArrayDescriptor Tool::heatersArrayDescriptor =
+{
+	nullptr,					// no lock needed
+	[] (const ObjectModel *self, const ObjectExplorationContext&) noexcept -> size_t { return ((const Tool*)self)->heaterCount; },
+	[] (const ObjectModel *self, ObjectExplorationContext& context) noexcept -> ExpressionValue { return ExpressionValue((int32_t)((const Tool*)self)->heaters[context.GetLastIndex()]); }
+};
+
+constexpr ObjectModelArrayDescriptor Tool::extrudersArrayDescriptor =
+{
+	nullptr,					// no lock needed
+	[] (const ObjectModel *self, const ObjectExplorationContext&) noexcept -> size_t { return ((const Tool*)self)->driveCount; },
+	[] (const ObjectModel *self, ObjectExplorationContext& context) noexcept -> ExpressionValue { return ExpressionValue((int32_t)((const Tool*)self)->drives[context.GetLastIndex()]); }
+};
+
+constexpr ObjectModelArrayDescriptor Tool::mixArrayDescriptor =
+{
+	nullptr,					// no lock needed
+	[] (const ObjectModel *self, const ObjectExplorationContext&) noexcept -> size_t { return ((const Tool*)self)->driveCount; },
+	[] (const ObjectModel *self, ObjectExplorationContext& context) noexcept -> ExpressionValue { return ExpressionValue(((const Tool*)self)->mix[context.GetLastIndex()], 2); }
+};
+
+constexpr ObjectModelArrayDescriptor Tool::offsetsArrayDescriptor =
+{
+	nullptr,					// no lock needed
+	[] (const ObjectModel *self, const ObjectExplorationContext&) noexcept -> size_t { return reprap.GetGCodes().GetVisibleAxes(); },
+	[] (const ObjectModel *self, ObjectExplorationContext& context) noexcept -> ExpressionValue { return ExpressionValue(((const Tool*)self)->offset[context.GetLastIndex()], 2); }
+};
+
+constexpr ObjectModelArrayDescriptor Tool::axesArrayDescriptor =
+{
+	nullptr,					// no lock needed
+	[] (const ObjectModel *self, const ObjectExplorationContext&) noexcept -> size_t { return 2; },
+	[] (const ObjectModel *self, ObjectExplorationContext& context) noexcept -> ExpressionValue { return ExpressionValue(((const Tool*)self)->axisMapping[context.GetLastIndex()]); }
+};
+
+constexpr ObjectModelTableEntry Tool::objectModelTable[] =
+{
+	// Within each group, these entries must be in alphabetical order
+	// 0. Tool members
+	{ "active",		OBJECT_MODEL_FUNC_NOSELF(&activeTempsArrayDescriptor), 			ObjectModelEntryFlags::live },
+	{ "axes",		OBJECT_MODEL_FUNC_NOSELF(&axesArrayDescriptor), 				ObjectModelEntryFlags::none },
+	{ "extruders",	OBJECT_MODEL_FUNC_NOSELF(&extrudersArrayDescriptor), 			ObjectModelEntryFlags::none },
+	{ "fans",		OBJECT_MODEL_FUNC(self->fanMapping), 							ObjectModelEntryFlags::none },
+	{ "heaters",	OBJECT_MODEL_FUNC_NOSELF(&heatersArrayDescriptor), 				ObjectModelEntryFlags::none },
+	{ "mix",		OBJECT_MODEL_FUNC_NOSELF(&mixArrayDescriptor), 					ObjectModelEntryFlags::none },
+	{ "name",		OBJECT_MODEL_FUNC(self->name),						 			ObjectModelEntryFlags::none },
+	{ "offsets",	OBJECT_MODEL_FUNC_NOSELF(&offsetsArrayDescriptor), 				ObjectModelEntryFlags::none },
+	{ "standby",	OBJECT_MODEL_FUNC_NOSELF(&standbyTempsArrayDescriptor), 		ObjectModelEntryFlags::live },
+	{ "state",		OBJECT_MODEL_FUNC(self->state.ToString()), 						ObjectModelEntryFlags::live },
+};
+
+constexpr uint8_t Tool::objectModelTableDescriptor[] = { 1, 10 };
+
+DEFINE_GET_OBJECT_MODEL_TABLE(Tool)
+
+#endif
+
 // Create a new tool and return a pointer to it. If an error occurs, put an error message in 'reply' and return nullptr.
 /*static*/ Tool *Tool::Create(unsigned int toolNumber, const char *name, int32_t d[], size_t dCount, int32_t h[], size_t hCount, AxesBitmap xMap, AxesBitmap yMap, FansBitmap fanMap, int filamentDrive, const StringRef& reply) noexcept
 {
@@ -96,11 +176,11 @@
 	t->state = ToolState::off;
 	t->driveCount = (uint8_t)dCount;
 	t->heaterCount = (uint8_t)hCount;
-	t->xMapping = xMap;
-	t->yMapping = yMap;
+	t->axisMapping[0] = xMap;
+	t->axisMapping[1] = yMap;
 	t->fanMapping = fanMap;
 	t->heaterFault = false;
-	t->axisOffsetsProbed = 0;
+	t->axisOffsetsProbed.Clear();
 	t->displayColdExtrudeWarning = false;
 
 	for (size_t axis = 0; axis < MaxAxes; axis++)
@@ -131,12 +211,12 @@
 
 /*static*/ AxesBitmap Tool::GetXAxes(const Tool *tool) noexcept
 {
-	return (tool == nullptr) ? DefaultXAxisMapping : tool->xMapping;
+	return (tool == nullptr) ? DefaultXAxisMapping : tool->axisMapping[0];
 }
 
 /*static*/ AxesBitmap Tool::GetYAxes(const Tool *tool) noexcept
 {
-	return (tool == nullptr) ? DefaultYAxisMapping : tool->yMapping;
+	return (tool == nullptr) ? DefaultYAxisMapping : tool->axisMapping[1];
 }
 
 /*static*/ float Tool::GetOffset(const Tool *tool, size_t axis) noexcept
@@ -186,7 +266,7 @@ void Tool::Print(const StringRef& reply) const noexcept
 	char sep = ' ';
 	for (size_t xi = 0; xi < MaxAxes; ++xi)
 	{
-		if ((xMapping & (1u << xi)) != 0)
+		if (axisMapping[0].IsBitSet(xi))
 		{
 			reply.catf("%c%c", sep, reprap.GetGCodes().GetAxisLetters()[xi]);
 			sep = ',';
@@ -197,7 +277,7 @@ void Tool::Print(const StringRef& reply) const noexcept
 	sep = ' ';
 	for (size_t yi = 0; yi < MaxAxes; ++yi)
 	{
-		if ((yMapping & (1u << yi)) != 0)
+		if (axisMapping[1].IsBitSet(yi))
 		{
 			reply.catf("%c%c", sep, reprap.GetGCodes().GetAxisLetters()[yi]);
 			sep = ',';
@@ -208,7 +288,7 @@ void Tool::Print(const StringRef& reply) const noexcept
 	sep = ' ';
 	for (size_t fi = 0; fi < MaxFans; ++fi)
 	{
-		if ((fanMapping & (1u << fi)) != 0)
+		if (fanMapping.IsBitSet(fi))
 		{
 			reply.catf("%c%u", sep, fi);
 			sep = ',';
@@ -317,7 +397,7 @@ bool Tool::ToolCanDrive(bool extrude) noexcept
 }
 
 // Update the number of active drives and extruders in use to reflect what this tool uses
-void Tool::UpdateExtruderAndHeaterCount(uint16_t &numExtruders, uint16_t &numHeaters) const noexcept
+void Tool::UpdateExtruderAndHeaterCount(uint16_t &numExtruders, uint16_t &numHeaters, uint16_t &numToolsToReport) const noexcept
 {
 	for (size_t drive = 0; drive < driveCount; drive++)
 	{
@@ -333,6 +413,11 @@ void Tool::UpdateExtruderAndHeaterCount(uint16_t &numExtruders, uint16_t &numHea
 		{
 			numHeaters = heaters[heater] + 1;
 		}
+	}
+
+	if (myNumber >= numToolsToReport)
+	{
+		numToolsToReport = myNumber + 1;
 	}
 }
 
@@ -395,7 +480,7 @@ void Tool::SetOffset(size_t axis, float offs, bool byProbing) noexcept
 	offset[axis] = offs;
 	if (byProbing)
 	{
-		SetBit(axisOffsetsProbed, axis);
+		axisOffsetsProbed.SetBit(axis);
 	}
 }
 

@@ -286,7 +286,7 @@ bool GCodes::HandleGcode(GCodeBuffer& gb, const StringRef& reply)
 			return false;
 		}
 
-		if ((reprap.GetMove().GetKinematics().AxesToHomeBeforeProbing() & ~axesHomed) != 0)
+		if (reprap.GetMove().GetKinematics().AxesToHomeBeforeProbing().Intersects(~axesHomed))
 		{
 			reply.copy("Insufficient axes homed for bed probing");
 			result = GCodeResult::error;
@@ -1379,20 +1379,14 @@ bool GCodes::HandleMcode(GCodeBuffer& gb, const StringRef& reply)
 
 				// Find the tool that the command applies to.
 				// This is the tool specified in the T parameter, else the current tool if there is one, else the default tool
-				Tool *applicableTool;
-				if (gb.Seen('T'))
-				{
-					int toolNumber = gb.GetIValue();
-					toolNumber += gb.GetToolNumberAdjust();
-					applicableTool = reprap.GetTool(toolNumber);
-				}
-				else
-				{
-					applicableTool = reprap.GetCurrentOrDefaultTool();
-				}
+				int32_t toolNumber = 0;
+				bool seenT = false;
+				gb.TryGetIValue('T', toolNumber, seenT);
+				toolNumber += gb.GetToolNumberAdjust();
+				ReadLockedPointer<Tool> const applicableTool = (seenT) ? reprap.GetTool(toolNumber) : reprap.GetCurrentOrDefaultTool();
 
 				// Check that we have a tool
-				if (applicableTool == nullptr)
+				if (applicableTool.IsNull())
 				{
 					reply.copy("Invalid tool number");
 					result = GCodeResult::error;
@@ -1403,7 +1397,7 @@ bool GCodes::HandleMcode(GCodeBuffer& gb, const StringRef& reply)
 				// because any slicer that uses M109 doesn't understand that there are separate active and standby temperatures.
 				if (simulationMode == 0)
 				{
-					SetToolHeaters(applicableTool, temperature, true);
+					SetToolHeaters(applicableTool.Ptr(), temperature, true);
 				}
 
 				Tool * const currentTool = reprap.GetCurrentTool();
@@ -1422,7 +1416,7 @@ bool GCodes::HandleMcode(GCodeBuffer& gb, const StringRef& reply)
 				}
 				else
 				{
-					if (applicableTool == currentTool)
+					if (applicableTool.Ptr() == currentTool)
 					{
 						// Even though the tool is selected, we may have turned it off e.g. when upgrading the WiFi firmware or following a heater fault that has been cleared.
 						// So make sure the tool heaters are on.
@@ -1545,7 +1539,7 @@ bool GCodes::HandleMcode(GCodeBuffer& gb, const StringRef& reply)
 					// Wait for the heaters associated with the specified tool to be ready
 					int toolNumber = gb.GetIValue();
 					toolNumber += gb.GetToolNumberAdjust();
-					if (!ToolHeatersAtSetTemperatures(reprap.GetTool(toolNumber), true, tolerance))
+					if (!ToolHeatersAtSetTemperatures(reprap.GetTool(toolNumber).Ptr(), true, tolerance))
 					{
 						CheckReportDue(gb, reply);				// check whether we need to send a temperature or status report
 						isWaiting = true;
@@ -2393,12 +2387,12 @@ bool GCodes::HandleMcode(GCodeBuffer& gb, const StringRef& reply)
 						break;
 					}
 
-					AxesBitmap axisControls = 0;
+					AxesBitmap axisControls;
 					for (size_t axis = 0; axis < numTotalAxes; axis++)
 					{
 						if (gb.Seen(axisLetters[axis]) && gb.GetIValue() > 0)
 						{
-							SetBit(axisControls, axis);
+							axisControls.SetBit(axis);
 						}
 					}
 
@@ -3281,8 +3275,8 @@ bool GCodes::HandleMcode(GCodeBuffer& gb, const StringRef& reply)
 			if (gb.Seen('P'))
 			{
 				const int8_t tNumber = gb.GetIValue();
-				Tool* const tool = reprap.GetTool(tNumber);
-				if (tool != nullptr)
+				ReadLockedPointer<Tool> const tool = reprap.GetTool(tNumber);
+				if (tool.IsNotNull())
 				{
 					if (gb.Seen(extrudeLetter))
 					{
@@ -4092,15 +4086,15 @@ bool GCodes::HandleMcode(GCodeBuffer& gb, const StringRef& reply)
 
 		case 851: // Set Z probe offset, only for Marlin compatibility
 			{
-				ZProbe& zp = platform.GetCurrentZProbe();
+				auto zp = platform.GetCurrentZProbe();
 				if (gb.Seen('Z'))
 				{
-					zp.SetTriggerHeight(-gb.GetFValue());
-					zp.SetSaveToConfigOverride();
+					zp->SetTriggerHeight(-gb.GetFValue());
+					zp->SetSaveToConfigOverride();
 				}
 				else
 				{
-					reply.printf("Z probe offset is %.2fmm", (double)(-zp.GetConfiguredTriggerHeight()));
+					reply.printf("Z probe offset is %.2fmm", (double)(-zp->GetConfiguredTriggerHeight()));
 				}
 			}
 			break;

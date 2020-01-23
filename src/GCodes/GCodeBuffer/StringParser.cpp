@@ -287,7 +287,7 @@ bool StringParser::CheckMetaCommand(const StringRef& reply)
 {
 	if (overflowed)
 	{
-		throw GCodeException(gb.MachineState().lineNumber, 0, "GCode command too long");
+		throw GCodeException(gb.MachineState().lineNumber, ARRAY_SIZE(gb.buffer) - 1, "GCode command too long");
 	}
 
 	const bool doingFile = gb.IsDoingFile();
@@ -1646,7 +1646,7 @@ void StringParser::AppendAsString(ExpressionValue val, const StringRef& str)
 		break;
 
 	case TYPE_OF(float):
-		str.catf((val.param == 3) ? "%.3f" : (val.param == 2) ? "%.2f" : "%.1f", (double)val.fVal);
+		str.catf(val.GetFloatFormatString(), (double)val.fVal);
 		break;
 
 	case TYPE_OF(uint32_t):
@@ -1667,12 +1667,20 @@ void StringParser::AppendAsString(ExpressionValue val, const StringRef& str)
 
 	case TYPE_OF(DateTime):
 		{
-			const time_t time = val.Get40BitValue();
+			const time_t time = val.Get56BitValue();
 			tm timeInfo;
 			gmtime_r(&time, &timeInfo);
 			str.catf("%04u-%02u-%02u %02u:%02u:%02u",
 						timeInfo.tm_year + 1900, timeInfo.tm_mon + 1, timeInfo.tm_mday, timeInfo.tm_hour, timeInfo.tm_min, timeInfo.tm_sec);
 		}
+		break;
+
+	case TYPE_OF(DriverId):
+#if SUPPORT_CAN_EXPANSION
+		str.catf("%u.%u", (unsigned int)(val.uVal >> 8), (unsigned int)(val.uVal & 0xFF));
+#else
+		str.catf("%u", (unsigned int)val.uVal);
+#endif
 		break;
 
 	default:
@@ -1910,6 +1918,7 @@ ExpressionValue StringParser::ParseExpression(StringBuffer& stringBuffer, uint8_
 					if (val.type == TYPE_OF(float))
 					{
 						val.fVal += val2.fVal;
+						val.param = max(val.param, val2.param);
 					}
 					else
 					{
@@ -1922,6 +1931,7 @@ ExpressionValue StringParser::ParseExpression(StringBuffer& stringBuffer, uint8_
 					if (val.type == TYPE_OF(float))
 					{
 						val.fVal -= val2.fVal;
+						val.param = max(val.param, val2.param);
 					}
 					else
 					{
@@ -1934,6 +1944,7 @@ ExpressionValue StringParser::ParseExpression(StringBuffer& stringBuffer, uint8_
 					if (val.type == TYPE_OF(float))
 					{
 						val.fVal *= val2.fVal;
+						val.param = max(val.param, val2.param);
 					}
 					else
 					{
@@ -1945,6 +1956,7 @@ ExpressionValue StringParser::ParseExpression(StringBuffer& stringBuffer, uint8_
 					ConvertToFloat(val, evaluate);
 					ConvertToFloat(val2, evaluate);
 					val.fVal /= val2.fVal;
+					val.param = 0;
 					break;
 
 				case '>':
@@ -2120,6 +2132,7 @@ void StringParser::ConvertToFloat(ExpressionValue& val, bool evaluate)
 	case TYPE_OF(int32_t):
 		val.fVal = (float)val.iVal;
 		val.type = TYPE_OF(float);
+		val.param = 1;
 		break;
 
 	case TYPE_OF(float):
@@ -2255,6 +2268,7 @@ ExpressionValue StringParser::ParseNumber()
 	if (isFloat)
 	{
 		retvalue.type = TYPE_OF(float);
+		retvalue.param = constrain<long>(digitsAfterPoint, 1, MaxFloatDigitsDisplayedAfterPoint);
 		if (valueAfterPoint != 0)
 		{
 			if (valueBeforePoint == 0)
@@ -2377,6 +2391,7 @@ ExpressionValue StringParser::ParseIdentifierExpression(StringBuffer& stringBuff
 	if (gb.buffer[readPointer] == '(')
 	{
 		// It's a function call
+		++readPointer;
 		ExpressionValue rslt = ParseExpression(stringBuffer, 0, evaluate);
 		if (id.Equals("abs"))
 		{
@@ -2402,31 +2417,37 @@ ExpressionValue StringParser::ParseIdentifierExpression(StringBuffer& stringBuff
 		{
 			ConvertToFloat(rslt, evaluate);
 			rslt.fVal = sinf(rslt.fVal);
+			rslt.param = MaxFloatDigitsDisplayedAfterPoint;
 		}
 		else if (id.Equals("cos"))
 		{
 			ConvertToFloat(rslt, evaluate);
 			rslt.fVal = cosf(rslt.fVal);
+			rslt.param = MaxFloatDigitsDisplayedAfterPoint;
 		}
 		else if (id.Equals("tan"))
 		{
 			ConvertToFloat(rslt, evaluate);
 			rslt.fVal = tanf(rslt.fVal);
+			rslt.param = MaxFloatDigitsDisplayedAfterPoint;
 		}
 		else if (id.Equals("asin"))
 		{
 			ConvertToFloat(rslt, evaluate);
 			rslt.fVal = asinf(rslt.fVal);
+			rslt.param = MaxFloatDigitsDisplayedAfterPoint;
 		}
 		else if (id.Equals("acos"))
 		{
 			ConvertToFloat(rslt, evaluate);
 			rslt.fVal = acosf(rslt.fVal);
+			rslt.param = MaxFloatDigitsDisplayedAfterPoint;
 		}
 		else if (id.Equals("atan"))
 		{
 			ConvertToFloat(rslt, evaluate);
 			rslt.fVal = atanf(rslt.fVal);
+			rslt.param = MaxFloatDigitsDisplayedAfterPoint;
 		}
 		else if (id.Equals("atan2"))
 		{
@@ -2441,11 +2462,13 @@ ExpressionValue StringParser::ParseIdentifierExpression(StringBuffer& stringBuff
 			ExpressionValue nextOperand = ParseExpression(stringBuffer, 0, evaluate);
 			ConvertToFloat(nextOperand, evaluate);
 			rslt.fVal = atan2f(rslt.fVal, nextOperand.fVal);
+			rslt.param = MaxFloatDigitsDisplayedAfterPoint;
 		}
 		else if (id.Equals("sqrt"))
 		{
 			ConvertToFloat(rslt, evaluate);
 			rslt.fVal = sqrtf(rslt.fVal);
+			rslt.param = MaxFloatDigitsDisplayedAfterPoint;
 		}
 		else if (id.Equals("isnan"))
 		{
@@ -2469,6 +2492,7 @@ ExpressionValue StringParser::ParseIdentifierExpression(StringBuffer& stringBuff
 				if (rslt.type == TYPE_OF(float))
 				{
 					rslt.fVal = max<float>(rslt.fVal, nextOperand.fVal);
+					rslt.param = max(rslt.param, nextOperand.param);
 				}
 				else
 				{
@@ -2492,6 +2516,7 @@ ExpressionValue StringParser::ParseIdentifierExpression(StringBuffer& stringBuff
 				if (rslt.type == TYPE_OF(float))
 				{
 					rslt.fVal = min<float>(rslt.fVal, nextOperand.fVal);
+					rslt.param = max(rslt.param, nextOperand.param);
 				}
 				else
 				{
@@ -2508,6 +2533,7 @@ ExpressionValue StringParser::ParseIdentifierExpression(StringBuffer& stringBuff
 		{
 			throw ConstructParseException("expected ')'");
 		}
+		++readPointer;
 		return rslt;
 	}
 

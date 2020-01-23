@@ -62,7 +62,7 @@ public:
 	void GetCurrentUserPosition(float m[MaxAxes], uint8_t moveType, const Tool *tool) const noexcept;
 																			// Return the position (after all queued moves have been executed) in transformed coords
 	int32_t GetEndPoint(size_t drive) const noexcept;					 	// Get the current position of a motor
-	void LiveCoordinates(float m[MaxAxesPlusExtruders], const Tool *tool) noexcept;	// Gives the last point at the end of the last complete DDA transformed to user coords
+	float LiveCoordinate(unsigned int axisOrExtruder, const Tool *tool) noexcept;	// Gives the last point at the end of the last complete DDA
 	bool AllMovesAreFinished() noexcept;									// Is the look-ahead ring empty?  Stops more moves being added as well.
 	void DoLookAhead() noexcept __attribute__ ((hot));						// Run the look-ahead procedure
 	void SetNewPosition(const float positionNow[MaxAxesPlusExtruders], bool doBedCompensation) noexcept; // Set the current position to be this
@@ -157,6 +157,8 @@ public:
 	DDARing& GetMainDDARing() noexcept { return mainDDARing; }
 	float GetTopSpeed() const noexcept { return mainDDARing.GetTopSpeed(); }
 	float GetRequestedSpeed() const noexcept { return mainDDARing.GetRequestedSpeed(); }
+	float GetAcceleration() const noexcept { return mainDDARing.GetAcceleration(); }
+	float GetDeceleration() const noexcept { return mainDDARing.GetDeceleration(); }
 
 	void AdjustLeadscrews(const floatc_t corrections[]) noexcept;							// Called by some Kinematics classes to adjust the leadscrews
 
@@ -209,7 +211,6 @@ private:
 	void InverseBedTransform(float move[MaxAxes],const  Tool *tool) const noexcept;		// Go from a bed-transformed point back to user coordinates
 	void AxisTransform(float move[MaxAxes], const Tool *tool) const noexcept;			// Take a position and apply the axis-angle compensations
 	void InverseAxisTransform(float move[MaxAxes], const Tool *tool) const noexcept;	// Go from an axis transformed point back to user coordinates
-	void SetPositions(const float move[MaxAxesPlusExtruders]) noexcept { return mainDDARing.SetPositions(move); }	// Force the machine coordinates to be these;
 	float GetInterpolatedHeightError(float xCoord, float yCoord) const noexcept;		// Get the height error at an XY position on the bed
 
 	DDARing mainDDARing;								// The DDA ring used for regular moves
@@ -251,18 +252,21 @@ private:
 	Deviation initialCalibrationDeviation;
 	Deviation latestMeshDeviation;
 
-	bool usingMesh;										// True if we are using the height map, false if we are using the random probe point set
-	bool useTaper;										// True to taper off the compensation
-
 	uint32_t idleTimeout;								// How long we wait with no activity before we reduce motor currents to idle, in milliseconds
 	uint32_t lastStateChangeTime;						// The approximate time at which the state last changed, except we don't record timing->idle
 
 	Kinematics *kinematics;								// What kinematics we are using
 
-	float specialMoveCoords[MaxDriversPerAxis];			// Amounts by which to move individual Z motors (leadscrew adjustment move)
-	bool bedLevellingMoveAvailable;						// True if a leadscrew adjustment move is pending
-
 	StraightProbeSettings straightProbeSettings;		// G38 straight probe settings
+
+	float latestLiveCoordinates[MaxAxesPlusExtruders];
+	float specialMoveCoords[MaxDriversPerAxis];			// Amounts by which to move individual Z motors (leadscrew adjustment move)
+
+	bool bedLevellingMoveAvailable;						// True if a leadscrew adjustment move is pending
+	bool liveCoordinatesUpToDate;
+	bool usingMesh;										// True if we are using the height map, false if we are using the random probe point set
+	bool useTaper;										// True to taper off the compensation
+
 
 #if SUPPORT_LASER || SUPPORT_IOBITS
 	static constexpr size_t LaserTaskStackWords = 100;	// stack size in dwords for the laser and IOBits task
@@ -289,14 +293,6 @@ inline int32_t Move::GetEndPoint(size_t drive) const noexcept
 inline void Move::AdjustMotorPositions(const float adjustment[], size_t numMotors) noexcept
 {
 	mainDDARing.AdjustMotorPositions(adjustment, numMotors);
-}
-
-// Return the current live XYZ and extruder coordinates
-// Interrupts are assumed enabled on entry
-inline void Move::LiveCoordinates(float m[MaxAxesPlusExtruders], const Tool *tool) noexcept
-{
-	mainDDARing.LiveCoordinates(m);
-	InverseAxisAndBedTransform(m, tool);
 }
 
 // These are the actual numbers that we want to be the coordinates, so don't transform them.

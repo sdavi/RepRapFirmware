@@ -14,6 +14,7 @@
 #if SUPPORT_OBJECT_MODEL
 
 #include <General/IPAddress.h>
+#include <General/Bitmap.h>
 #include <RTOSIface/RTOSIface.h>
 
 typedef uint8_t TypeCode;
@@ -21,6 +22,7 @@ constexpr TypeCode NoType = 0;							// code for an invalid or unknown type
 
 // Dummy types, used to define type codes
 class Bitmap32;
+class Bitmap64;
 class Enum32;
 class ObjectModel;					// forward declaration
 class ObjectModelArrayDescriptor;	// forward declaration
@@ -37,18 +39,21 @@ struct DateTime
 // Each type must return a unique type code in the range 1 to 127 (0 is NoType)
 template<class T> constexpr TypeCode TypeOf() noexcept;
 
-template<> constexpr TypeCode TypeOf<bool>() noexcept { return 1; }
-template<> constexpr TypeCode TypeOf<char>() noexcept { return 2; }
-template<> constexpr TypeCode TypeOf<uint32_t>() noexcept { return 3; }
-template<> constexpr TypeCode TypeOf<int32_t>() noexcept { return 4; }
-template<> constexpr TypeCode TypeOf<float>() noexcept { return 5; }
-template<> constexpr TypeCode TypeOf<Bitmap32>() noexcept { return 6; }
-template<> constexpr TypeCode TypeOf<Enum32>() noexcept { return 7; }
-template<> constexpr TypeCode TypeOf<const ObjectModel*>() noexcept { return 8; }
-template<> constexpr TypeCode TypeOf<const char*>() noexcept { return 9; }
-template<> constexpr TypeCode TypeOf<IPAddress>() noexcept { return 10; }
-template<> constexpr TypeCode TypeOf<const ObjectModelArrayDescriptor*>() noexcept { return 11; }
-template<> constexpr TypeCode TypeOf<DateTime>() noexcept { return 12; }
+template<> constexpr TypeCode TypeOf<bool>								() noexcept { return 1; }
+template<> constexpr TypeCode TypeOf<char>								() noexcept { return 2; }
+template<> constexpr TypeCode TypeOf<uint32_t>							() noexcept { return 3; }
+template<> constexpr TypeCode TypeOf<int32_t>							() noexcept { return 4; }
+template<> constexpr TypeCode TypeOf<float>								() noexcept { return 5; }
+template<> constexpr TypeCode TypeOf<Bitmap<uint16_t>>					() noexcept { return 6; }
+template<> constexpr TypeCode TypeOf<Bitmap<uint32_t>>					() noexcept { return 7; }
+template<> constexpr TypeCode TypeOf<Bitmap<uint64_t>>					() noexcept { return 8; }
+template<> constexpr TypeCode TypeOf<Enum32>							() noexcept { return 9; }
+template<> constexpr TypeCode TypeOf<const ObjectModel*>				() noexcept { return 10; }
+template<> constexpr TypeCode TypeOf<const char*>						() noexcept { return 11; }
+template<> constexpr TypeCode TypeOf<IPAddress>							() noexcept { return 12; }
+template<> constexpr TypeCode TypeOf<const ObjectModelArrayDescriptor*>	() noexcept { return 13; }
+template<> constexpr TypeCode TypeOf<DateTime>							() noexcept	{ return 14; }
+template<> constexpr TypeCode TypeOf<DriverId>							() noexcept { return 15; }
 
 #define TYPE_OF(_t) (TypeOf<_t>())
 
@@ -60,9 +65,9 @@ class StringParser;
 // Struct used to hold the expressions with polymorphic types
 struct ExpressionValue
 {
-	TypeCode type;									// what type is stored in the union
-	uint8_t param;									// additional parameter, e.g. number of usual displayed decimal places for a float,
-													// or table # for an ObjectModel, or 8 extra bits for a date/time
+	uint32_t type : 8,								// what type is stored in the union
+			 param : 24;							// additional parameter, e.g. number of usual displayed decimal places for a float,
+													// or table # for an ObjectModel, or 24 extra bits for a date/time or a long bitmap
 	union
 	{
 		bool bVal;
@@ -71,14 +76,14 @@ struct ExpressionValue
 		int32_t iVal;
 		uint32_t uVal;								// used for enumerations, bitmaps and IP addresses (not for integers, we always use int32_t for those)
 		const char *sVal;
-		const ObjectModel *omVal;					// object of some class derived form ObkectModel
+		const ObjectModel *omVal;					// object of some class derived form ObjectModel
 		const ObjectModelArrayDescriptor *omadVal;
 	};
 
 	ExpressionValue() noexcept : type(NoType) { }
 	explicit constexpr ExpressionValue(bool b) noexcept : type(TYPE_OF(bool)), param(0), bVal(b) { }
 	explicit constexpr ExpressionValue(char c) noexcept : type(TYPE_OF(char)), param(0), cVal(c) { }
-	explicit constexpr ExpressionValue(float f) noexcept : type(TYPE_OF(float)), param(1), fVal(f) { }
+	explicit constexpr ExpressionValue(float f) noexcept : type(TYPE_OF(float)), param(MaxFloatDigitsDisplayedAfterPoint), fVal(f) { }
 	constexpr ExpressionValue(float f, uint8_t numDecimalPlaces) noexcept : type(TYPE_OF(float)), param(numDecimalPlaces), fVal(f) { }
 	explicit constexpr ExpressionValue(int32_t i) noexcept : type(TYPE_OF(int32_t)), param(0), iVal(i) { }
 	explicit constexpr ExpressionValue(const ObjectModel *om) noexcept : type(TYPE_OF(const ObjectModel*)), param(0), omVal(om) { }
@@ -87,7 +92,11 @@ struct ExpressionValue
 	explicit constexpr ExpressionValue(const ObjectModelArrayDescriptor *omad) noexcept : type(TYPE_OF(const ObjectModelArrayDescriptor*)), param(0), omadVal(omad) { }
 	explicit constexpr ExpressionValue(IPAddress ip) noexcept : type(TYPE_OF(IPAddress)), param(0), uVal(ip.GetV4LittleEndian()) { }
 	explicit constexpr ExpressionValue(nullptr_t dummy) noexcept : type(NoType), param(0), uVal(0) { }
-	explicit ExpressionValue(DateTime t) noexcept : type(TYPE_OF(DateTime)), param(t.tim >> 32), uVal((uint32_t)t.tim) { }
+	explicit ExpressionValue(DateTime t) noexcept : type((t.tim == 0) ? NoType : TYPE_OF(DateTime)), param(t.tim >> 32), uVal((uint32_t)t.tim) { }
+	explicit ExpressionValue(DriverId id) noexcept : type(TYPE_OF(DriverId)), param(0), uVal(id.AsU32()) { }
+	explicit ExpressionValue(Bitmap<uint16_t> bm) noexcept : type(TYPE_OF(Bitmap<uint16_t>)), param(0), uVal(bm.GetRaw()) { }
+	explicit ExpressionValue(Bitmap<uint32_t> bm) noexcept : type(TYPE_OF(Bitmap<uint32_t>)), param(0), uVal(bm.GetRaw()) { }
+	explicit ExpressionValue(Bitmap<uint64_t> bm) noexcept : type(TYPE_OF(Bitmap<uint64_t>)), param(bm.GetRaw() >> 32), uVal((uint32_t)bm.GetRaw()) { }
 
 	void Set(bool b) noexcept { type = TYPE_OF(bool); bVal = b; }
 	void Set(char c) noexcept { type = TYPE_OF(char); cVal = c; }
@@ -96,8 +105,11 @@ struct ExpressionValue
 	void Set(float f) noexcept { type = TYPE_OF(float); fVal = f; param = 1; }
 	void Set(const char *s) noexcept { type = TYPE_OF(const char*); sVal = s; }
 
-	// Extract a 40-bit value that we have stored. Used to retrieve date/times.
-	uint64_t Get40BitValue() const noexcept { return ((uint64_t)param << 32) | uVal; }
+	// Extract a 56-bit value that we have stored. Used to retrieve date/times and large bitmaps.
+	uint64_t Get56BitValue() const noexcept { return ((uint64_t)param << 32) | uVal; }
+
+	// Get the format string to use assuming this is a floating point number
+	const char *GetFloatFormatString() const noexcept { return ::GetFloatFormatString(param); }
 };
 
 // Flags field of a table entry
@@ -129,6 +141,7 @@ public:
 	bool ShortFormReport() const noexcept { return shortForm; }
 	bool ShouldReport(const ObjectModelEntryFlags f) const noexcept;
 	bool WantArrayLength() const noexcept { return wantArrayLength; }
+	bool ShouldIncludeNulls() const noexcept { return includeNulls; }
 
 private:
 	static constexpr size_t MaxIndices = 4;			// max depth of array nesting
@@ -140,6 +153,7 @@ private:
 	bool onlyLive;
 	bool includeVerbose;
 	bool wantArrayLength;
+	bool includeNulls;
 };
 
 // Entry to describe an array of objects or values. These must be brace-initializable into flash memory.
@@ -156,6 +170,7 @@ class ObjectModel
 {
 public:
 	ObjectModel() noexcept;
+	virtual ~ObjectModel() { }
 
 	// Construct a JSON representation of those parts of the object model requested by the user. This version is called on the root of the tree.
 	void ReportAsJson(OutputBuffer *buf, const char *filter, const char *reportFlags, bool wantArrayLength) const THROWS_GCODE_EXCEPTION;
@@ -186,7 +201,7 @@ protected:
 };
 
 // Function used for compile-time check for the correct number of entries in an object model table
-static inline constexpr size_t ArraySum(const uint8_t *arr, size_t numEntries)
+static inline constexpr size_t ArraySum(const uint8_t *arr, size_t numEntries) noexcept
 {
 	return (numEntries == 0) ? 0 : arr[0] + ArraySum(arr + 1, numEntries - 1);
 }
@@ -212,7 +227,7 @@ public:
 	bool Matches(const char *filter, const ObjectExplorationContext& context) const noexcept;
 
 	// See whether we should add the value of this element to the buffer, returning true if it matched the filter and we did add it
-	void ReportAsJson(OutputBuffer* buf, ObjectExplorationContext& context, const ObjectModel *self, const char* filter) const noexcept;
+	bool ReportAsJson(OutputBuffer* buf, ObjectExplorationContext& context, const ObjectModel *self, const char* filter, bool first) const noexcept;
 
 	// Return the name of this field
 	const char* GetName() const noexcept { return name; }
@@ -221,19 +236,19 @@ public:
 	int IdCompare(const char *id) const noexcept;
 
 	// Return true if a section of the OMT is ordered
-	static inline constexpr bool IsOrdered(const ObjectModelTableEntry *omt, size_t len)
+	static inline constexpr bool IsOrdered(const ObjectModelTableEntry *omt, size_t len) noexcept
 	{
 		return len <= 1 || (strcmp(omt[1].name, omt[0].name) == 1 && IsOrdered(omt + 1, len - 1));
 	}
 
 	// Return true if a section of the OMT specified by the descriptor is ordered
-	static inline constexpr bool IsOrdered(uint8_t sectionsLeft, const uint8_t *descriptorSection, const ObjectModelTableEntry *omt)
+	static inline constexpr bool IsOrdered(uint8_t sectionsLeft, const uint8_t *descriptorSection, const ObjectModelTableEntry *omt) noexcept
 	{
 		return sectionsLeft == 0 || (IsOrdered(omt, *descriptorSection) && IsOrdered(sectionsLeft - 1, descriptorSection + 1, omt + *descriptorSection));
 	}
 
 	// Return true if the whole OMT is ordered
-	static inline constexpr bool IsOrdered(const uint8_t *descriptor, const ObjectModelTableEntry *omt)
+	static inline constexpr bool IsOrdered(const uint8_t *descriptor, const ObjectModelTableEntry *omt) noexcept
 	{
 		return IsOrdered(descriptor[0], descriptor + 1, omt);
 	}
@@ -247,6 +262,9 @@ public:
 	const ObjectModelTableEntry *GetObjectModelTable(const uint8_t*& descriptor) const noexcept override; \
 	static const ObjectModelTableEntry objectModelTable[]; \
 	static const uint8_t objectModelTableDescriptor[];
+
+#define DECLARE_OBJECT_MODEL_VIRTUAL \
+	virtual const ObjectModelTableEntry *GetObjectModelTable(const uint8_t*& descriptor) const noexcept override = 0;
 
 #define DESCRIPTOR_OK(_class) 	(ARRAY_SIZE(_class::objectModelTableDescriptor) == _class::objectModelTableDescriptor[0] + 1)
 #define OMT_SIZE_OK(_class)		(ARRAY_SIZE(_class::objectModelTable) == ArraySum(_class::objectModelTableDescriptor + 1, ARRAY_SIZE(_class::objectModelTableDescriptor) - 1))
@@ -262,14 +280,20 @@ public:
 		return objectModelTable; \
 	}
 
-#define OBJECT_MODEL_FUNC_BODY(_class,...) [] (const ObjectModel* arg, ObjectExplorationContext& context) noexcept { const _class * const self = static_cast<const _class*>(arg); return ExpressionValue(__VA_ARGS__); }
+#define OBJECT_MODEL_FUNC_BODY(_class,...) [] (const ObjectModel* arg, ObjectExplorationContext& context) noexcept \
+	{ const _class * const self = static_cast<const _class*>(arg); return ExpressionValue(__VA_ARGS__); }
+#define OBJECT_MODEL_FUNC_IF_BODY(_class,_condition,...) [] (const ObjectModel* arg, ObjectExplorationContext& context) noexcept \
+	{ const _class * const self = static_cast<const _class*>(arg); return (_condition) ? ExpressionValue(__VA_ARGS__) : ExpressionValue(nullptr); }
 #define OBJECT_MODEL_FUNC_NOSELF(...) [] (const ObjectModel* arg, ObjectExplorationContext& context) noexcept { return ExpressionValue(__VA_ARGS__); }
+#define OBJECT_MODEL_ARRAY(_name)	static const ObjectModelArrayDescriptor _name ## ArrayDescriptor;
 
 #else
 
 #define INHERIT_OBJECT_MODEL			// nothing
 #define DECLARE_OBJECT_MODEL			// nothing
+#define DECLARE_OBJECT_MODEL_VIRTUAL	// nothing
 #define DEFINE_GET_OBJECT_MODEL_TABLE	// nothing
+#define OBJECT_MODEL_ARRAY(_name)		// nothing
 
 #endif
 

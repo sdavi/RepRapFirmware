@@ -208,6 +208,8 @@ extern Pin PanelButtonPin;
 extern Pin DiagPin;
 
 extern bool ADCEnablePreFilter;
+extern uint8_t ADCPreFilterNumberSamples;
+extern uint32_t ADCPreFilterSampleRate;
 
 constexpr size_t NumSoftwareSPIPins = 3;
 extern Pin SoftwareSPIPins[3]; //GPIO pins for softwareSPI (used with SharedSPI)

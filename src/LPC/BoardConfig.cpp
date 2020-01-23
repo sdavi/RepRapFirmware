@@ -55,7 +55,8 @@ static const boardConfigEntry_t boardConfigs[]=
     {"externalSDCard.cardDetectPin", &SdCardDetectPins[1], nullptr, cvPinType},
     {"lpc.externalSDCard.spiFrequencyHz", &ExternalSDCardFrequency, nullptr, cvUint32Type},
     {"lpc.externalSDCard.spiChannel", &ExternalSDCardSSPChannel, nullptr, cvUint8Type},
-    
+
+#if SUPPORT_12864_LCD
     {"lcd.lcdCSPin", &LcdCSPin, nullptr, cvPinType},
     {"lcd.lcdBeepPin", &LcdBeepPin, nullptr, cvPinType},
     {"lcd.encoderPinA", &EncoderPinA, nullptr, cvPinType},
@@ -64,12 +65,9 @@ static const boardConfigEntry_t boardConfigs[]=
     {"lcd.lcdDCPin", &LcdDCPin, nullptr, cvPinType},
     {"lcd.panelButtonPin", &PanelButtonPin, nullptr, cvPinType},
     {"lcd.spiChannel", &LcdSpiChannel, nullptr, cvUint8Type},
+#endif
     
     {"lpc.softwareSPI.pins", SoftwareSPIPins, &NumSoftwareSPIPins, cvPinType}, //SCK, MISO, MOSI
-    
-#if HAS_LINUX_INTERFACE
-    {"linuxTfrReadyPin", &LinuxTfrReadyPin, nullptr, cvPinType},
-#endif
     
 #if defined(ESP8266WIFI)
     {"8266wifi.EspDataReadyPin", &EspDataReadyPin, nullptr, cvPinType},
@@ -78,7 +76,9 @@ static const boardConfigEntry_t boardConfigs[]=
 #endif
     
     {"lpc.adcEnablePreFilter", &ADCEnablePreFilter, nullptr, cvBoolType},
-    
+    {"lpc.adcPreFilterNumberSamples", &ADCPreFilterNumberSamples, nullptr, cvUint8Type},
+    {"lpc.adcPreFilterSampleRate", &ADCPreFilterSampleRate, nullptr, cvUint32Type},
+
 };
 
 
@@ -100,6 +100,8 @@ void BoardConfig::Init() noexcept
     String<100> reply;
     FileStore *configFile = nullptr;
     
+    NVIC_SetPriority(DMA_IRQn, NvicPrioritySpi);
+
     //Mount the Internal SDCard
     do
     {
@@ -200,7 +202,7 @@ void BoardConfig::Init() noexcept
 
         pinMode(DiagPin, OUTPUT_LOW);
         
-        ConfigureADCPreFilter(ADCEnablePreFilter);
+        ConfigureADCPreFilter(ADCEnablePreFilter, ADCPreFilterNumberSamples, ADCPreFilterSampleRate);
     }
 }
 
@@ -308,7 +310,7 @@ void BoardConfig::Diagnostics(MessageType mtype) noexcept
         }
     }
 
-    reprap.GetPlatform().MessageF(mtype, "== Software PWM ==\n");
+    reprap.GetPlatform().MessageF(mtype, "\n== Software PWM ==\n");
     for(uint8_t i=0; i<MaxNumberSoftwarePWMPins; i++)
     {
         SoftwarePWM *next = softwarePWMEntries[i];
@@ -321,7 +323,7 @@ void BoardConfig::Diagnostics(MessageType mtype) noexcept
     
     
     //Print Servo PWM Timer or HW PWM assignments
-    reprap.GetPlatform().MessageF(mtype, "== Servo PWM ==\n");
+    reprap.GetPlatform().MessageF(mtype, "\n== Servo PWM ==\n");
     reprap.GetPlatform().MessageF(mtype, "Hardware PWM = %dHz ", HardwarePWMFrequency );
     PrintPinArray(mtype, UsedHardwarePWMChannel, NumPwmChannels);
     reprap.GetPlatform().MessageF(mtype, "Timer2 PWM = 50Hz ");

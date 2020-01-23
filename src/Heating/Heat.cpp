@@ -60,18 +60,18 @@ extern "C" [[noreturn]] void SensorsTaskStart(void * pvParameters) noexcept
 // Note: if using GCC version 7.3.1 20180622 and lambda functions are used in this table, you must compile this file with option -std=gnu++17.
 // Otherwise the table will be allocated in RAM instead of flash, which wastes too much RAM.
 
-const ObjectModelArrayDescriptor Heat::heatersArrayDescriptor =
+constexpr ObjectModelArrayDescriptor Heat::heatersArrayDescriptor =
 {
 	&heatersLock,
 	[] (const ObjectModel *self, const ObjectExplorationContext&) noexcept -> size_t { return ((const Heat*)self)->GetNumHeatersToReport(); },
-	[] (const ObjectModel *self, ObjectExplorationContext& context) noexcept -> ExpressionValue { return ExpressionValue(((const Heat*)self)->heaters[context.GetIndex(0)]); }
+	[] (const ObjectModel *self, ObjectExplorationContext& context) noexcept -> ExpressionValue { return ExpressionValue(((const Heat*)self)->heaters[context.GetLastIndex()]); }
 };
 
-const ObjectModelArrayDescriptor Heat::sensorsArrayDescriptor =
+constexpr ObjectModelArrayDescriptor Heat::sensorsArrayDescriptor =
 {
 	&sensorsLock,
 	[] (const ObjectModel *self, const ObjectExplorationContext&) noexcept -> size_t { return ((const Heat*)self)->GetNumSensorsToReport(); },
-	[] (const ObjectModel *self, ObjectExplorationContext& context) noexcept -> ExpressionValue { return ExpressionValue(((const Heat*)self)->FindSensor(context.GetIndex(0)).Ptr()); }
+	[] (const ObjectModel *self, ObjectExplorationContext& context) noexcept -> ExpressionValue { return ExpressionValue(((const Heat*)self)->FindSensor(context.GetLastIndex()).Ptr()); }
 };
 
 // Macro to build a standard lambda function that includes the necessary type conversions
@@ -81,10 +81,10 @@ constexpr ObjectModelTableEntry Heat::objectModelTable[] =
 {
 	// These entries must be in alphabetical order
 	// 0. Heat class
-	{ "coldExtrudeTemperature", OBJECT_MODEL_FUNC(self->extrusionMinTemp), ObjectModelEntryFlags::none},
-	{ "coldRetractTemperature", OBJECT_MODEL_FUNC(self->retractionMinTemp), ObjectModelEntryFlags::none},
-	{ "heaters", OBJECT_MODEL_FUNC_NOSELF(&heatersArrayDescriptor), ObjectModelEntryFlags::live },
-	{ "sensors", OBJECT_MODEL_FUNC_NOSELF(&sensorsArrayDescriptor), ObjectModelEntryFlags::live },
+	{ "coldExtrudeTemperature",	OBJECT_MODEL_FUNC(self->extrusionMinTemp, 1),		ObjectModelEntryFlags::none},
+	{ "coldRetractTemperature", OBJECT_MODEL_FUNC(self->retractionMinTemp, 1),		ObjectModelEntryFlags::none},
+	{ "heaters",				OBJECT_MODEL_FUNC_NOSELF(&heatersArrayDescriptor),	ObjectModelEntryFlags::live },
+	{ "sensors",				OBJECT_MODEL_FUNC_NOSELF(&sensorsArrayDescriptor),	ObjectModelEntryFlags::live },
 };
 
 constexpr uint8_t Heat::objectModelTableDescriptor[] = { 1, 4 };

@@ -8,13 +8,49 @@
 #include "Fan.h"
 #include "GCodes/GCodeBuffer/GCodeBuffer.h"
 
+#if SUPPORT_OBJECT_MODEL
+
+// Object model table and functions
+// Note: if using GCC version 7.3.1 20180622 and lambda functions are used in this table, you must compile this file with option -std=gnu++17.
+// Otherwise the table will be allocated in RAM instead of flash, which wastes too much RAM.
+
+// Macro to build a standard lambda function that includes the necessary type conversions
+#define OBJECT_MODEL_FUNC(...) OBJECT_MODEL_FUNC_BODY(Fan, __VA_ARGS__)
+#define OBJECT_MODEL_FUNC_IF(_condition,...) OBJECT_MODEL_FUNC_IF_BODY(Fan, _condition,__VA_ARGS__)
+
+constexpr ObjectModelTableEntry Fan::objectModelTable[] =
+{
+	// Within each group, these entries must be in alphabetical order
+	// 0. Fan members
+	{ "actualValue",		OBJECT_MODEL_FUNC(self->lastVal, 1), 															ObjectModelEntryFlags::live },
+	{ "blip",				OBJECT_MODEL_FUNC(0.001f * (float)self->blipTime, 2), 											ObjectModelEntryFlags::none },
+	{ "max",				OBJECT_MODEL_FUNC(self->maxVal, 2), 															ObjectModelEntryFlags::none },
+	{ "min",				OBJECT_MODEL_FUNC(self->minVal, 2), 															ObjectModelEntryFlags::none },
+	{ "name",				OBJECT_MODEL_FUNC(self->name.c_str()), 															ObjectModelEntryFlags::none },
+	{ "requestedValue",		OBJECT_MODEL_FUNC(self->val, 2), 																ObjectModelEntryFlags::live },
+	{ "rpm",				OBJECT_MODEL_FUNC(self->GetRPM()), 																ObjectModelEntryFlags::live },
+	{ "thermostatic",		OBJECT_MODEL_FUNC(self, 1), 																	ObjectModelEntryFlags::none },
+
+	// 1. Fan.thermostatic members
+	{ "control",			OBJECT_MODEL_FUNC(self->sensorsMonitored.IsNonEmpty()), 										ObjectModelEntryFlags::none },
+	{ "heaters",			OBJECT_MODEL_FUNC_IF(self->sensorsMonitored.IsNonEmpty(), self->sensorsMonitored),				ObjectModelEntryFlags::none },
+	{ "highTemperature",	OBJECT_MODEL_FUNC_IF(self->sensorsMonitored.IsNonEmpty(), self->triggerTemperatures[1], 1), 	ObjectModelEntryFlags::none },
+	{ "lowTemperature",		OBJECT_MODEL_FUNC_IF(self->sensorsMonitored.IsNonEmpty(), self->triggerTemperatures[0], 1), 	ObjectModelEntryFlags::none },
+};
+
+constexpr uint8_t Fan::objectModelTableDescriptor[] = { 2, 8, 4 };
+
+DEFINE_GET_OBJECT_MODEL_TABLE(Fan)
+
+#endif
+
 Fan::Fan(unsigned int fanNum) noexcept
 	: fanNumber(fanNum),
 	  val(0.0), lastVal(0.0),
 	  minVal(DefaultMinFanPwm),
 	  maxVal(1.0),										// 100% maximum fan speed
+	  lastRpm(-1), whenLastRpmSet(0),
 	  blipTime(DefaultFanBlipTime),
-	  sensorsMonitored(0),
 	  isConfigured(false)
 {
 	triggerTemperatures[0] = triggerTemperatures[1] = DefaultHotEndFanTemperature;
@@ -84,7 +120,7 @@ bool Fan::Configure(unsigned int mcode, size_t fanNum, GCodeBuffer& gb, const St
 			gb.GetIntArray(sensors, numH, false);
 
 			// Note that M106 H-1 disables thermostatic mode. The following code implements that automatically.
-			sensorsMonitored = 0;
+			sensorsMonitored.Clear();
 			for (size_t h = 0; h < numH; ++h)
 			{
 				const int hnum = sensors[h];
@@ -92,7 +128,7 @@ bool Fan::Configure(unsigned int mcode, size_t fanNum, GCodeBuffer& gb, const St
 				{
 					if (hnum < (int)MaxSensors)
 					{
-						SetBit(sensorsMonitored, (unsigned int)hnum);
+						sensorsMonitored.SetBit((unsigned int)hnum);
 					}
 					else
 					{
@@ -101,7 +137,7 @@ bool Fan::Configure(unsigned int mcode, size_t fanNum, GCodeBuffer& gb, const St
 					}
 				}
 			}
-			if (sensorsMonitored != 0)
+			if (sensorsMonitored.IsNonEmpty())
 			{
 				val = 1.0;					// default the fan speed to full for safety
 			}
@@ -142,16 +178,10 @@ bool Fan::Configure(unsigned int mcode, size_t fanNum, GCodeBuffer& gb, const St
 						(int)(maxVal * 100.0),
 						(double)(blipTime * MillisToSeconds)
 					  );
-			if (sensorsMonitored != 0)
+			if (sensorsMonitored.IsNonEmpty())
 			{
 				reply.catf(", temperature: %.1f:%.1fC, sensors:", (double)triggerTemperatures[0], (double)triggerTemperatures[1]);
-				SensorsBitmap copySensorsMonitored = sensorsMonitored;
-				while (copySensorsMonitored != 0)
-				{
-					const unsigned int sensorNum = LowestSetBit(copySensorsMonitored);
-					ClearBit(copySensorsMonitored, sensorNum);
-					reply.catf(" %u", sensorNum);
-				}
+				sensorsMonitored.Iterate([&reply](unsigned int sensorNum, bool) noexcept { reply.catf(" %u", sensorNum); });
 				reply.catf(", current speed: %d%%:", (int)(lastVal * 100.0));
 			}
 		}
@@ -167,12 +197,21 @@ GCodeResult Fan::SetPwm(float speed, const StringRef& reply) noexcept
 	return Refresh(reply);
 }
 
+int32_t Fan::GetRPM() const noexcept
+{
+	if (millis() - whenLastRpmSet > RpmReadingTimeout)
+	{
+		lastRpm = -1;
+	}
+	return lastRpm;
+}
+
 #if HAS_MASS_STORAGE
 
 // Save the settings of this fan if it isn't thermostatic
 bool Fan::WriteSettings(FileStore *f, size_t fanNum) const noexcept
 {
-	if (sensorsMonitored == 0)
+	if (sensorsMonitored.IsNonEmpty())
 	{
 		String<StringLength20> fanCommand;
 		fanCommand.printf("M106 P%u S%.2f\n", fanNum, (double)val);
