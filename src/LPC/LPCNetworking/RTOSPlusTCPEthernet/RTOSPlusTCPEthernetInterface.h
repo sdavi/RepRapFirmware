@@ -67,8 +67,8 @@ public:
     IPAddress GetIPAddress() const noexcept override { return ipAddress; }
     void SetIPAddress(IPAddress p_ip, IPAddress p_netmask, IPAddress p_gateway) noexcept override;
 
-	void SetMacAddress(const uint8_t mac[]) noexcept override;
-	const uint8_t *GetMacAddress() const noexcept override { return macAddress; }
+    GCodeResult SetMacAddress(const MacAddress& mac, const StringRef& reply) noexcept override;
+    const MacAddress& GetMacAddress() const noexcept override { return macAddress; }
 
 	void OpenDataPort(Port port) noexcept override;
 	void TerminateDataPort() noexcept override;
@@ -132,7 +132,7 @@ private:
     IPAddress ipAddress;
     IPAddress netmask;
     IPAddress gateway;
-	uint8_t macAddress[6];
+    MacAddress macAddress;
 };
 
 #endif //RTOSPLUSTCPETHERNET_H

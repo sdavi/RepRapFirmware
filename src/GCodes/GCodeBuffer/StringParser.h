@@ -14,9 +14,11 @@
 #include <MessageType.h>
 #include <ObjectModel/ObjectModel.h>
 #include <GCodes/GCodeException.h>
+#include <Networking/NetworkDefs.h>
 
 class GCodeBuffer;
 class IPAddress;
+class MacAddress;
 class StringBuffer;
 
 class StringParser
@@ -46,7 +48,7 @@ public:
 	uint32_t GetUIValue() THROWS_GCODE_EXCEPTION;								// Get an unsigned integer value
 	DriverId GetDriverId() THROWS_GCODE_EXCEPTION;								// Get a driver ID
 	void GetIPAddress(IPAddress& returnedIp) THROWS_GCODE_EXCEPTION;			// Get an IP address quad after a key letter
-	void GetMacAddress(uint8_t mac[6]) THROWS_GCODE_EXCEPTION;					// Get a MAC address sextet after a key letter
+	void GetMacAddress(MacAddress& mac) THROWS_GCODE_EXCEPTION;					// Get a MAC address sextet after a key letter
 	void GetUnprecedentedString(const StringRef& str, bool allowEmpty) THROWS_GCODE_EXCEPTION;	// Get a string with no preceding key letter
 	void GetQuotedString(const StringRef& str, bool allowEmpty = false) THROWS_GCODE_EXCEPTION;	// Get and copy a quoted string
 	void GetPossiblyQuotedString(const StringRef& str, bool allowEmpty = false) THROWS_GCODE_EXCEPTION;	// Get and copy a string which may or may not be quoted
@@ -100,11 +102,11 @@ private:
 		pre (readPointer >= 0);
 
 	void CheckForMixedSpacesAndTabs() noexcept;
-	bool ProcessConditionalGCode(const StringRef& reply, BlockType previousBlockType, bool doingFile) THROWS_GCODE_EXCEPTION;
+	bool ProcessConditionalGCode(const StringRef& reply, BlockType skippedBlockType, bool doingFile) THROWS_GCODE_EXCEPTION;
 																			// Check for and process a conditional GCode language command returning true if we found one
 	void ProcessIfCommand() THROWS_GCODE_EXCEPTION;
-	void ProcessElseCommand(BlockType previousBlockType) THROWS_GCODE_EXCEPTION;
-	void ProcessElifCommand(BlockType previousBlockType) THROWS_GCODE_EXCEPTION;
+	void ProcessElseCommand(BlockType skippedBlockType) THROWS_GCODE_EXCEPTION;
+	void ProcessElifCommand(BlockType skippedBlockType) THROWS_GCODE_EXCEPTION;
 	void ProcessWhileCommand() THROWS_GCODE_EXCEPTION;
 	void ProcessBreakCommand() THROWS_GCODE_EXCEPTION;
 	void ProcessContinueCommand() THROWS_GCODE_EXCEPTION;

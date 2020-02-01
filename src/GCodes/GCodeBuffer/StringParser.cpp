@@ -15,6 +15,7 @@
 #include "RepRap.h"
 #include <General/IP4String.h>
 #include <General/StringBuffer.h>
+#include <Networking/NetworkDefs.h>
 
 // Replace the default definition of THROW_INTERNAL_ERROR by one that gives line information
 #undef THROW_INTERNAL_ERROR
@@ -291,9 +292,10 @@ bool StringParser::CheckMetaCommand(const StringRef& reply)
 	}
 
 	const bool doingFile = gb.IsDoingFile();
-	BlockType previousBlockType = BlockType::plain;
+	BlockType skippedBlockType = BlockType::plain;
 	if (doingFile)
 	{
+		// Deal with warning about mixed spaces and tabs
 		if (commandIndent == 0)
 		{
 			seenLeadingSpace = seenLeadingTab = false;						// it's OK if the previous block used only space and the following one uses only tab, or v.v.
@@ -301,22 +303,26 @@ bool StringParser::CheckMetaCommand(const StringRef& reply)
 		else
 		{
 			CheckForMixedSpacesAndTabs();
+		}
+
+		// Deal with skipping blocks
+		if (indentToSkipTo != NoIndentSkip)
+		{
 			if (indentToSkipTo < commandIndent)
 			{
 				Init();
 				return true;												// continue skipping this block
 			}
-		}
-
-		if (indentToSkipTo != NoIndentSkip && indentToSkipTo >= commandIndent)
-		{
-			// Finished skipping the nested block
-			if (indentToSkipTo == commandIndent)
+			else
 			{
-				previousBlockType = gb.machineState->CurrentBlockState().GetType();
-				gb.machineState->CurrentBlockState().SetPlainBlock();		// we've ended the loop or if-block
+				// Finished skipping the nested block
+				if (indentToSkipTo == commandIndent)
+				{
+					skippedBlockType = gb.machineState->CurrentBlockState().GetType();	// save the type of the block we skipped in case the command is 'else' or 'elif'
+					gb.machineState->CurrentBlockState().SetPlainBlock();	// we've ended the loop or if-block
+				}
+				indentToSkipTo = NoIndentSkip;								// no longer skipping
 			}
-			indentToSkipTo = NoIndentSkip;									// no longer skipping
 		}
 
 		while (commandIndent < gb.machineState->CurrentBlockIndent())
@@ -334,7 +340,7 @@ bool StringParser::CheckMetaCommand(const StringRef& reply)
 
 		if (commandIndent > gb.machineState->CurrentBlockIndent())
 		{
-			// indentation has increased so start new block(s)
+			// Indentation has increased so start new block(s)
 			if (!gb.machineState->CreateBlock(commandIndent))
 			{
 				throw ConstructParseException("blocks nested too deeply");
@@ -342,7 +348,7 @@ bool StringParser::CheckMetaCommand(const StringRef& reply)
 		}
 	}
 
-	const bool b = ProcessConditionalGCode(reply, previousBlockType, doingFile);	// this may throw a ParseException
+	const bool b = ProcessConditionalGCode(reply, skippedBlockType, doingFile);	// this may throw a ParseException
 	if (b)
 	{
 		seenMetaCommand = true;
@@ -367,8 +373,8 @@ void StringParser::CheckForMixedSpacesAndTabs() noexcept
 }
 
 // Check for and process a conditional GCode language command returning true if we found one, false if it's a regular line of GCode that we need to process
-// 'skippedIfFalse' is true if we just finished skipping an if-block when the condition was false and there might be an 'else'
-bool StringParser::ProcessConditionalGCode(const StringRef& reply, BlockType previousBlockType, bool doingFile)
+// If we just finished skipping an if- or elif-block when the condition was false then 'skippedBlockType' is the type of that block, else it is BlockType::plain
+bool StringParser::ProcessConditionalGCode(const StringRef& reply, BlockType skippedBlockType, bool doingFile)
 {
 	// First count the number of lowercase characters.
 	unsigned int i = 0;
@@ -416,12 +422,12 @@ bool StringParser::ProcessConditionalGCode(const StringRef& reply, BlockType pre
 			{
 				if (StringStartsWith(command, "else"))
 				{
-					ProcessElseCommand(previousBlockType);
+					ProcessElseCommand(skippedBlockType);
 					return true;
 				}
 				if (StringStartsWith(command, "elif"))
 				{
-					ProcessElifCommand(previousBlockType);
+					ProcessElifCommand(skippedBlockType);
 					return true;
 				}
 			}
@@ -479,13 +485,13 @@ void StringParser::ProcessIfCommand()
 	}
 }
 
-void StringParser::ProcessElseCommand(BlockType previousBlockType)
+void StringParser::ProcessElseCommand(BlockType skippedBlockType)
 {
-	if (previousBlockType == BlockType::ifFalseNoneTrue)
+	if (skippedBlockType == BlockType::ifFalseNoneTrue)
 	{
 		gb.machineState->CurrentBlockState().SetPlainBlock();			// execute the else-block, treating it like a plain block
 	}
-	else if (gb.machineState->CurrentBlockState().GetType() == BlockType::ifTrue || gb.machineState->CurrentBlockState().GetType() == BlockType::ifFalseHadTrue)
+	else if (skippedBlockType == BlockType::ifFalseHadTrue || gb.machineState->CurrentBlockState().GetType() == BlockType::ifTrue)
 	{
 		indentToSkipTo = gb.machineState->CurrentBlockIndent();			// skip forwards to the end of the if-block
 		gb.machineState->CurrentBlockState().SetPlainBlock();			// so that we get an error if there is another 'else' part
@@ -496,9 +502,9 @@ void StringParser::ProcessElseCommand(BlockType previousBlockType)
 	}
 }
 
-void StringParser::ProcessElifCommand(BlockType previousBlockType)
+void StringParser::ProcessElifCommand(BlockType skippedBlockType)
 {
-	if (previousBlockType == BlockType::ifFalseNoneTrue)
+	if (skippedBlockType == BlockType::ifFalseNoneTrue)
 	{
 		if (EvaluateCondition())
 		{
@@ -510,7 +516,7 @@ void StringParser::ProcessElifCommand(BlockType previousBlockType)
 			gb.machineState->CurrentBlockState().SetIfFalseNoneTrueBlock();
 		}
 	}
-	else if (gb.machineState->CurrentBlockState().GetType() == BlockType::ifTrue || gb.machineState->CurrentBlockState().GetType() == BlockType::ifFalseHadTrue)
+	else if (skippedBlockType == BlockType::ifFalseHadTrue || gb.machineState->CurrentBlockState().GetType() == BlockType::ifTrue)
 	{
 		indentToSkipTo = gb.machineState->CurrentBlockIndent();			// skip forwards to the end of the if-block
 		gb.machineState->CurrentBlockState().SetIfFalseHadTrueBlock();
@@ -705,13 +711,13 @@ void StringParser::DecodeCommand() noexcept
 			}
 		}
 
-		// Find where the end of the command is. We assume that a G or M preceded by a space and not inside quotes is the start of a new command.
+		// Find where the end of the command is. We assume that a G or M preceded by a space and not inside quotes or { } is the start of a new command.
 		bool inQuotes = false;
+		unsigned int braceCount = 0;
 		bool primed = false;
 		for (commandEnd = parameterStart; commandEnd < gcodeLineEnd; ++commandEnd)
 		{
 			const char c = gb.buffer[commandEnd];
-			char c2;
 			if (c == '"')
 			{
 				inQuotes = !inQuotes;
@@ -719,11 +725,28 @@ void StringParser::DecodeCommand() noexcept
 			}
 			else if (!inQuotes)
 			{
-				if (primed && ((c2 = toupper(c)) == 'G' || c2 == 'M'))
+				char c2;
+				if (c == '{')
+				{
+					++braceCount;
+					primed = false;
+				}
+				else if (c == '}')
+				{
+					if (braceCount != 0)
+					{
+						--braceCount;
+					}
+					primed = false;
+				}
+				else if (primed && ((c2 = toupper(c)) == 'G' || c2 == 'M'))
 				{
 					break;
 				}
-				primed = (c == ' ' || c == '\t');
+				else if (braceCount == 0)
+				{
+					primed = (c == ' ' || c == '\t');
+				}
 			}
 		}
 	}
@@ -1282,8 +1305,8 @@ void StringParser::GetIPAddress(IPAddress& returnedIp)
 	returnedIp.SetV4(ip);
 }
 
-// Get a MAX address sextet after a key letter
-void StringParser::GetMacAddress(uint8_t mac[6])
+// Get a MAC address sextet after a key letter
+void StringParser::GetMacAddress(MacAddress& mac)
 {
 	if (readPointer <= 0)
 	{
@@ -1301,7 +1324,7 @@ void StringParser::GetMacAddress(uint8_t mac[6])
 			readPointer = -1;
 			throw ConstructParseException("invalid MAC address");
 		}
-		mac[n] = (uint8_t)v;
+		mac.bytes[n] = (uint8_t)v;
 		++n;
 		p = pp;
 		if (*p != ':')
@@ -1683,6 +1706,12 @@ void StringParser::AppendAsString(ExpressionValue val, const StringRef& str)
 #endif
 		break;
 
+	case TYPE_OF(MacAddress):
+		str.catf("%02x:%02x:%02x:%02x:%02x:%02x",
+					(unsigned int)(val.uVal & 0xFF), (unsigned int)((val.uVal >> 8) & 0xFF), (unsigned int)((val.uVal >> 16) & 0xFF), (unsigned int)((val.uVal >> 24) & 0xFF),
+					(unsigned int)(val.param & 0xFF), (unsigned int)((val.param >> 8) & 0xFF));
+		break;
+
 	default:
 		throw ConstructParseException("string value expected");
 	}
@@ -1807,7 +1836,7 @@ ExpressionValue StringParser::ParseExpression(StringBuffer& stringBuffer, uint8_
 		}
 		else if (isalpha(c))				// looks like a variable name
 		{
-			val = ParseIdentifierExpression(stringBuffer, evaluate, false);
+			val = ParseIdentifierExpression(stringBuffer, false, evaluate);
 		}
 		else
 		{
@@ -1864,8 +1893,6 @@ ExpressionValue StringParser::ParseExpression(StringBuffer& stringBuffer, uint8_
 		{
 			++readPointer;
 		}
-
-		SkipWhiteSpace();
 
 		// Handle operators that do not always evaluate their second operand
 		switch (opChar)
@@ -2077,8 +2104,8 @@ void StringParser::BalanceNumericTypes(ExpressionValue& val1, ExpressionValue& v
 		{
 			throw ConstructParseException("expected numeric operands");
 		}
-		val1.Set(0);
-		val2.Set(0);
+		val1.Set((int32_t)0);
+		val2.Set((int32_t)0);
 	}
 }
 
@@ -2098,8 +2125,8 @@ void StringParser::BalanceTypes(ExpressionValue& val1, ExpressionValue& val2, bo
 		{
 			throw ConstructParseException("cannot convert operands to same type");
 		}
-		val1.Set(0);
-		val2.Set(0);
+		val1.Set((int32_t)0);
+		val2.Set((int32_t)0);
 	}
 }
 
@@ -2121,7 +2148,7 @@ void StringParser::EnsureNumeric(ExpressionValue& val, bool evaluate)
 		{
 			throw ConstructParseException("expected numeric operand");
 		}
-		val.Set(0);
+		val.Set((int32_t)0);
 	}
 }
 
@@ -2303,7 +2330,7 @@ ExpressionValue StringParser::ParseIdentifierExpression(StringBuffer& stringBuff
 	}
 
 	String<MaxVariableNameLength> id;
-	ObjectExplorationContext context("v", applyLengthOperator);
+	ObjectExplorationContext context("v", applyLengthOperator, 99, gb.machineState->lineNumber, readPointer);
 
 	// Loop parsing identifiers and index expressions
 	// When we come across an index expression, evaluate it, add it to the context, and place a marker in the identifier string.
@@ -2393,6 +2420,7 @@ ExpressionValue StringParser::ParseIdentifierExpression(StringBuffer& stringBuff
 		// It's a function call
 		++readPointer;
 		ExpressionValue rslt = ParseExpression(stringBuffer, 0, evaluate);
+		//TODO use a binary search to do function lookup
 		if (id.Equals("abs"))
 		{
 			switch (rslt.type)
@@ -2410,7 +2438,7 @@ ExpressionValue StringParser::ParseIdentifierExpression(StringBuffer& stringBuff
 				{
 					throw ConstructParseException("expected numeric operand");
 				}
-				rslt.Set(0);
+				rslt.Set((int32_t)0);
 			}
 		}
 		else if (id.Equals("sin"))
@@ -2476,6 +2504,44 @@ ExpressionValue StringParser::ParseIdentifierExpression(StringBuffer& stringBuff
 			rslt.type = TYPE_OF(bool);
 			rslt.bVal = (isnan(rslt.fVal) != 0);
 		}
+		else if (id.Equals("floor"))
+		{
+			ConvertToFloat(rslt, evaluate);
+			const float f = floorf(rslt.fVal);
+			if (f <= (float)std::numeric_limits<int32_t>::max() && f >= (float)std::numeric_limits<int32_t>::min())
+			{
+				rslt.type = TYPE_OF(int32_t);
+				rslt.iVal = (int32_t)f;
+			}
+			else
+			{
+				rslt.fVal = f;
+			}
+		}
+		else if (id.Equals("mod"))
+		{
+			SkipWhiteSpace();
+			if (gb.buffer[readPointer] != ',')
+			{
+				throw ConstructParseException("expected ','");
+			}
+			++readPointer;
+			SkipWhiteSpace();
+			ExpressionValue nextOperand = ParseExpression(stringBuffer, 0, evaluate);
+			BalanceNumericTypes(rslt, nextOperand, evaluate);
+			if (rslt.type == TYPE_OF(float))
+			{
+				rslt.fVal = fmod(rslt.fVal, nextOperand.fVal);
+			}
+			else if (nextOperand.iVal == 0)
+			{
+				rslt.iVal = 0;
+			}
+			else
+			{
+				rslt.iVal %= nextOperand.iVal;
+			}
+		}
 		else if (id.Equals("max"))
 		{
 			for (;;)
@@ -2537,7 +2603,7 @@ ExpressionValue StringParser::ParseIdentifierExpression(StringBuffer& stringBuff
 		return rslt;
 	}
 
-	return reprap.GetObjectValue(*this, context, id.c_str());
+	return reprap.GetObjectValue(context, id.c_str());
 }
 
 GCodeException StringParser::ConstructParseException(const char *str) const

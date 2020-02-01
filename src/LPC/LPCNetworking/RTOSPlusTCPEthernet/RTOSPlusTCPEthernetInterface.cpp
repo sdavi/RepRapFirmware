@@ -78,8 +78,8 @@ constexpr ObjectModelTableEntry RTOSPlusTCPEthernetInterface::objectModelTable[]
 {
     // These entries must be in alphabetical order
     { "actualIP",           OBJECT_MODEL_FUNC(self->ipAddress),     ObjectModelEntryFlags::none },
-    { "firmwareVersion",    OBJECT_MODEL_FUNC_NOSELF(nullptr),      ObjectModelEntryFlags::none },
     { "gateway",            OBJECT_MODEL_FUNC(self->gateway),       ObjectModelEntryFlags::none },
+    { "mac",                OBJECT_MODEL_FUNC(self->macAddress),    ObjectModelEntryFlags::none },
     { "subnet",             OBJECT_MODEL_FUNC(self->netmask),       ObjectModelEntryFlags::none },
     { "type",               OBJECT_MODEL_FUNC_NOSELF("ethernet"),   ObjectModelEntryFlags::none },
 };
@@ -94,7 +94,7 @@ void RTOSPlusTCPEthernetInterface::Init() noexcept
 {
 	interfaceMutex.Create("RTOSPlusTCPEthernet");
 	SetIPAddress(DefaultIpAddress, DefaultNetMask, DefaultGateway);
-	memcpy(macAddress, platform.GetDefaultMacAddress(), sizeof(macAddress));
+    macAddress = platform.GetDefaultMacAddress();
 }
 
 GCodeResult RTOSPlusTCPEthernetInterface::EnableProtocol(NetworkProtocol protocol, int port, int secure, const StringRef& reply) noexcept
@@ -277,12 +277,10 @@ GCodeResult RTOSPlusTCPEthernetInterface::GetNetworkState(const StringRef& reply
 }
 
 // Update the MAC address
-void RTOSPlusTCPEthernetInterface::SetMacAddress(const uint8_t mac[]) noexcept
+GCodeResult RTOSPlusTCPEthernetInterface::SetMacAddress(const MacAddress& mac, const StringRef& reply) noexcept
 {
-	for (size_t i = 0; i < 6; i++)
-	{
-		macAddress[i] = mac[i];
-	}
+    macAddress = mac;
+    return GCodeResult::ok;
 }
 
 // Start up the network
@@ -302,12 +300,12 @@ void RTOSPlusTCPEthernetInterface::Start() noexcept
         SetIPAddress(platform.GetIPAddress(), platform.NetMask(), platform.GateWay());
 
         //set the global mac var needed for networkinterface.c
-        ucMACAddress[0] = macAddress[0];
-        ucMACAddress[1] = macAddress[1];
-        ucMACAddress[2] = macAddress[2];
-        ucMACAddress[3] = macAddress[3];
-        ucMACAddress[4] = macAddress[4];
-        ucMACAddress[5] = macAddress[5];
+        ucMACAddress[0] = macAddress.bytes[0];
+        ucMACAddress[1] = macAddress.bytes[1];
+        ucMACAddress[2] = macAddress.bytes[2];
+        ucMACAddress[3] = macAddress.bytes[3];
+        ucMACAddress[4] = macAddress.bytes[4];
+        ucMACAddress[5] = macAddress.bytes[5];
 
         uint8_t ip[4], nm[4], gw[4], dns[4];
         ipAddress.UnpackV4(ip);
@@ -320,7 +318,7 @@ void RTOSPlusTCPEthernetInterface::Start() noexcept
         }
         
         //FreeRTOS_IPInit should only be called once
-        BaseType_t ret = FreeRTOS_IPInit( ip, nm, gw, dns, macAddress );
+        BaseType_t ret = FreeRTOS_IPInit( ip, nm, gw, dns, ucMACAddress );
         if(ret == pdFALSE)
         {
             platform.Message(NetworkInfoMessage, "Failed to Init FreeRTOS+TCP\n");

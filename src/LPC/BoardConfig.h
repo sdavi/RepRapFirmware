@@ -25,6 +25,14 @@ enum configValueType{
     cvStringType,
 };
 
+struct boardConfigEntry_t
+{
+    const char* key;
+    void *variable;
+    const size_t *maxArrayEntries;
+    configValueType type;
+};
+
 
 class Platform; //fwd decl
 
@@ -35,14 +43,15 @@ public:
 
     static void Diagnostics(MessageType mtype) noexcept;
     static Pin StringToPin(const char *strvalue) noexcept;
+    static Pin LookupPin(char *strvalue) noexcept;
 
+    
 private:
     BoardConfig()  noexcept;
-    static bool GetConfigKeys(FileStore *configFile ) noexcept;
-    static void SetValueFromString(configValueType type, void *variable, const char *valuePtr) noexcept;
+    static bool GetConfigKeys(FileStore *configFile, const boardConfigEntry_t *boardConfigEntryArray, const size_t numConfigs) noexcept;
+    static void SetValueFromString(configValueType type, void *variable, char *valuePtr) noexcept;
     static void PrintValue(MessageType mtype, configValueType configType, void *variable) noexcept;
     static void PrintPinArray(MessageType mtype, Pin arr[], uint16_t numEntries) noexcept;
-
 };
 
 #endif /* BOARDCONFIG_H_ */

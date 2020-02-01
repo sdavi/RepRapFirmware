@@ -22,20 +22,15 @@
 
 #include "SoftwarePWM.h"
 
-struct boardConfigEntry_t
+//Single entry for Board name
+static const boardConfigEntry_t boardEntryConfig[]=
 {
-    const char* key;
-    void *variable;
-    const size_t *maxArrayEntries;
-    configValueType type;
+    {"lpc.board", &lpcBoardName, nullptr, cvStringType},
 };
 
-
+//All other board configs
 static const boardConfigEntry_t boardConfigs[]=
 {
-
-    {"lpc.board", &lpcBoardName, nullptr, cvStringType},
-
     {"leds.diagnostic", &DiagPin, nullptr, cvPinType},
     {"lpc.internalSDCard.spiFrequencyHz", &InternalSDCardFrequency, nullptr, cvUint32Type},
 
@@ -136,15 +131,20 @@ void BoardConfig::Init() noexcept
         
         reprap.GetPlatform().MessageF(UsbMessage, "Loading config from %sboard.txt...\n", DEFAULT_SYS_DIR );
 
-        BoardConfig::GetConfigKeys(configFile);
-        configFile->Close();
         
+        //First find the board entry to load the correct PinTable for looking up Pin by name
+        BoardConfig::GetConfigKeys(configFile, boardEntryConfig, (size_t) 1);
         if(!SetBoard(lpcBoardName)) // load the Correct PinTable for the defined Board (RRF3)
         {
             //Failed to find string in known boards array
             reprap.GetPlatform().MessageF(UsbMessage, "Unknown board: %s\n", lpcBoardName );
             SafeStrncpy(lpcBoardName, "generic", 8); //replace the string in lpcBoardName to "generic"
         }
+
+        //Load all other config settings now that PinTable is loaded.
+        configFile->Seek(0); //go back to beginning of config file
+        BoardConfig::GetConfigKeys(configFile, boardConfigs, (size_t) ARRAY_SIZE(boardConfigs));
+        configFile->Close();
         
         
         //Calculate STEP_DRIVER_MASK (used for parallel writes)
@@ -190,18 +190,20 @@ void BoardConfig::Init() noexcept
         #if defined(ESP8266WIFI)
             if(SamCsPin != NoPin) pinMode(SamCsPin, OUTPUT_LOW);
             if(EspResetPin != NoPin) pinMode(EspResetPin, OUTPUT_LOW);
-        #else
-            //Init pins from LCD
-            //make sure to init ButtonPin as input incase user presses button
-            if(PanelButtonPin != NoPin) pinMode(PanelButtonPin, INPUT); //unused
-            if(LcdDCPin != NoPin) pinMode(LcdDCPin, OUTPUT_HIGH); //unused
-            if(LcdBeepPin != NoPin) pinMode(LcdBeepPin, OUTPUT_LOW);
-            // Set the 12864 display CS pin low to prevent it from receiving garbage due to other SPI traffic
-            if(LcdCSPin != NoPin) pinMode(LcdCSPin, OUTPUT_LOW);
         #endif
 
+        //Init pins for LCD
+        //make sure to init ButtonPin as input incase user presses button
+        if(PanelButtonPin != NoPin) pinMode(PanelButtonPin, INPUT); //unused
+        if(LcdDCPin != NoPin) pinMode(LcdDCPin, OUTPUT_HIGH); //unused
+        if(LcdBeepPin != NoPin) pinMode(LcdBeepPin, OUTPUT_LOW);
+        // Set the 12864 display CS pin low to prevent it from receiving garbage due to other SPI traffic
+        if(LcdCSPin != NoPin) pinMode(LcdCSPin, OUTPUT_LOW);
+
+        //Init Diagnostcs Pin
         pinMode(DiagPin, OUTPUT_LOW);
         
+        //Configure ADC pre filter
         ConfigureADCPreFilter(ADCEnablePreFilter, ADCPreFilterNumberSamples, ADCPreFilterSampleRate);
     }
 }
@@ -232,6 +234,24 @@ Pin BoardConfig::StringToPin(const char *strvalue) noexcept
     //debugPrintf("Invalid pin %s, defaulting to NoPin\n", strvalue);
     
     return NoPin;
+}
+
+Pin BoardConfig::LookupPin(char *strvalue) noexcept
+{
+    //Lookup a pin by name
+    LogicalPin lp;
+    bool hwInverted;
+    
+    //convert string to lower case for LookupPinName
+    for(char *l = strvalue; *l; l++) *l = tolower(*l);
+    
+    if(LookupPinName(strvalue, lp, hwInverted))
+    {
+        return PinTable[lp].pin; //lookup succeeded, return the Pin
+    }
+                     
+    //pin may not be in the pintable so check if the format is a correct pin (returns NoPin if not)
+    return StringToPin(strvalue);
 }
 
 
@@ -283,7 +303,14 @@ void BoardConfig::Diagnostics(MessageType mtype) noexcept
 {
     reprap.GetPlatform().MessageF(mtype, "== Configurable Board.txt Settings ==\n");
 
-    //Pin Array Configs
+    //Print the board name
+    boardConfigEntry_t board = boardEntryConfig[0];
+    reprap.GetPlatform().MessageF(mtype, "%s = ", board.key );
+    BoardConfig::PrintValue(mtype, board.type, board.variable);
+    reprap.GetPlatform().MessageF(mtype, "\n");
+
+    
+    //Print rest of board configurations
     const size_t numConfigs = ARRAY_SIZE(boardConfigs);
     for(size_t i=0; i<numConfigs; i++)
     {
@@ -352,12 +379,12 @@ void BoardConfig::PrintPinArray(MessageType mtype, Pin arr[], uint16_t numEntrie
 
 
 //Set a variable from a string using the specified data type
-void BoardConfig::SetValueFromString(configValueType type, void *variable, const char *valuePtr) noexcept
+void BoardConfig::SetValueFromString(configValueType type, void *variable, char *valuePtr) noexcept
 {
     switch(type)
     {
         case cvPinType:
-            *(Pin *)(variable) = StringToPin(valuePtr);
+            *(Pin *)(variable) = LookupPin(valuePtr);
             break;
             
         case cvBoolType:
@@ -429,7 +456,7 @@ void BoardConfig::SetValueFromString(configValueType type, void *variable, const
 
 
 
-bool BoardConfig::GetConfigKeys(FileStore *configFile) noexcept
+bool BoardConfig::GetConfigKeys(FileStore *configFile, const boardConfigEntry_t *boardConfigEntryArray, const size_t numConfigs) noexcept
 {
 
     size_t maxLineLength = 120;
@@ -471,16 +498,16 @@ bool BoardConfig::GetConfigKeys(FileStore *configFile) noexcept
                     //Array of Values:
                     //TODO:: only Pin arrays are currently implemented
                     
-                    const size_t numConfigs = ARRAY_SIZE(boardConfigs);
+                    //const size_t numConfigs = ARRAY_SIZE(boardConfigs);
                     for(size_t i=0; i<numConfigs; i++)
                     {
-                        boardConfigEntry_t next = boardConfigs[i];
+                        boardConfigEntry_t next = boardConfigEntryArray[i];
                         //Currently only handles Arrays of Pins
                         
                         
                         if(next.maxArrayEntries != nullptr /*&& next.type == cvPinType*/ && StringEqualsIgnoreCase(key, next.key))
                         {
-                            //matched an entry in BoardConfigs
+                            //matched an entry in boardConfigEntryArray
 
                             //create a temp array to read into. Only copy the array entries into the final destination when we know the array is properly defined
                             const size_t maxArraySize = *next.maxArrayEntries;
@@ -530,7 +557,7 @@ bool BoardConfig::GetConfigKeys(FileStore *configFile) noexcept
                                         //Try to Read the next Value
 
                                         //should be at first char of value now
-                                        const char *valuePtr = line+pos;
+                                        char *valuePtr = line+pos;
 
                                         //read until end condition - space,comma,}  or null / # ;
                                         while(pos < maxLineLength && line[pos] != 0 && !isSpaceOrTab(line[pos]) && line[pos] != ',' && line[pos] != '}' && line[pos] != '/' && line[pos] != '#' && line[pos] != ';')
@@ -559,7 +586,7 @@ bool BoardConfig::GetConfigKeys(FileStore *configFile) noexcept
                                         //Put into the Temp Array
                                         if(arrIdx >= 0 && arrIdx<maxArraySize)
                                         {
-                                            readArray[arrIdx] = StringToPin(valuePtr);
+                                            readArray[arrIdx] = LookupPin(valuePtr);
                                             
                                             //TODO:: HANDLE OTHER VALUE TYPES??
                                             
@@ -607,7 +634,7 @@ bool BoardConfig::GetConfigKeys(FileStore *configFile) noexcept
                     if(pos < maxLineLength && line[pos] != 0)
                     {
                         //should be at first char of value now
-                        const char *valuePtr = line+pos;
+                        char *valuePtr = line+pos;
 
                         //read until end condition - space, ;, comment, null,etc
                         while(pos < maxLineLength && line[pos] != 0 && !isSpaceOrTab(line[pos]) && line[pos] != ';' && line[pos] != '/') pos++;
@@ -615,11 +642,11 @@ bool BoardConfig::GetConfigKeys(FileStore *configFile) noexcept
                         //overrite the end condition with null....
                         line[pos] = 0; // null terminate the string (the "value")
 
-                        //Find the entry in boardConfigs using the key
-                        const size_t numConfigs = ARRAY_SIZE(boardConfigs);
+                        //Find the entry in boardConfigEntryArray using the key
+                        //const size_t numConfigs = ARRAY_SIZE(boardConfigs);
                         for(size_t i=0; i<numConfigs; i++)
                         {
-                            boardConfigEntry_t next = boardConfigs[i];
+                            boardConfigEntry_t next = boardConfigEntryArray[i];
                             //Single Value config entries have nullptr for maxArrayEntries
                             if(next.maxArrayEntries == nullptr && StringEqualsIgnoreCase(key, next.key))
                             {

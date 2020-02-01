@@ -1128,7 +1128,7 @@ bool GCodes::HandleMcode(GCodeBuffer& gb, const StringRef& reply)
 #if SUPPORT_CAN_EXPANSION
 						if (gpPort.boardAddress != CanId::MasterAddress)
 						{
-							result = CanInterface::WriteGpio(gpPort.boardAddress, gpioPortNumber, val, false, reply);
+							result = CanInterface::WriteGpio(gpPort.boardAddress, gpioPortNumber, val, false, gb, reply);
 							break;
 						}
 #endif
@@ -2264,7 +2264,7 @@ bool GCodes::HandleMcode(GCodeBuffer& gb, const StringRef& reply)
 #if SUPPORT_CAN_EXPANSION
 						if (gpPort.boardAddress != CanId::MasterAddress)
 						{
-							result = CanInterface::WriteGpio(gpPort.boardAddress, gpioPortNumber, pwm, true, reply);
+							result = CanInterface::WriteGpio(gpPort.boardAddress, gpioPortNumber, pwm, true, gb, reply);
 							break;
 						}
 #endif
@@ -2918,14 +2918,14 @@ bool GCodes::HandleMcode(GCodeBuffer& gb, const StringRef& reply)
 				const unsigned int interface = (gb.Seen('I') ? gb.GetUIValue() : 0);
 				if (gb.Seen('P'))
 				{
-					uint8_t mac[6];
+					MacAddress mac;
 					gb.GetMacAddress(mac);
-					reprap.GetNetwork().SetMacAddress(interface, mac);
+					result = reprap.GetNetwork().SetMacAddress(interface, mac, reply);
 				}
 				else
 				{
-					const uint8_t * const mac = reprap.GetNetwork().GetMacAddress(interface);
-					reply.printf("MAC: %02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+					const MacAddress& mac = reprap.GetNetwork().GetMacAddress(interface);
+					reply.printf("MAC: %02x:%02x:%02x:%02x:%02x:%02x", mac.bytes[0], mac.bytes[1], mac.bytes[2], mac.bytes[3], mac.bytes[4], mac.bytes[5]);
 				}
 			}
 			break;
@@ -4312,7 +4312,17 @@ bool GCodes::HandleMcode(GCodeBuffer& gb, const StringRef& reply)
 			break;
 #endif
 
-		case 997: // Perform firmware update
+#if SUPPORT_CAN_EXPANSION
+		case 952:	// set CAN-FD data rate
+			result = CanInterface::SetFastDataRate(gb, reply);
+			break;
+
+		case 953:	// change expansion board CAN address
+			result = CanInterface::ChangeExpansionBoardAddress(gb, reply);
+			break;
+#endif
+
+		case 997:	// Perform firmware update
 			result = UpdateFirmware(gb, reply);
 			break;
 
