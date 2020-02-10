@@ -17,26 +17,26 @@ constexpr PinEntry PinTable_Smoothieboard[] =
 {
 
     //Thermistors
-    {P0_23, PinCapability::ainrw, "t1"},
-    {P0_24, PinCapability::ainrw, "t2"},
-    {P0_25, PinCapability::ainrw, "t3"},
-    {P0_26, PinCapability::ainrw, "t4"},
+    {P0_23, PinCapability::ainrw, "bedtemp,t1,P0.23"},
+    {P0_24, PinCapability::ainrw, "e0temp,t2,P0.24"},
+    {P0_25, PinCapability::ainrw, "e1temp,t3,P0.25"},
+    {P0_26, PinCapability::ainrw, "t4,P0.26"},
 
     //Endstops
-    {P1_24, PinCapability::rwpwm, "xmin"},
-    {P1_25, PinCapability::rwpwm, "xmax"},
-    {P1_26, PinCapability::rwpwm, "ymin"},
-    {P1_27, PinCapability::rwpwm, "ymax"},
-    {P1_28, PinCapability::rwpwm, "zmin"},
-    {P1_29, PinCapability::rwpwm, "zmax"},
+    {P1_24, PinCapability::rwpwm, "xstop,xmin,P1.24"},
+    {P1_25, PinCapability::rwpwm, "xstopmax,xmax,P1.25"},
+    {P1_26, PinCapability::rwpwm, "ystop,ymin,P1.26"},
+    {P1_27, PinCapability::rwpwm, "ystopmax,ymax,P1.27"},
+    {P1_28, PinCapability::rwpwm, "zstop,zmin,P1.28"},
+    {P1_29, PinCapability::rwpwm, "zstopmax,zmax,P1.29"},
 
     //Heaters and Fans (Big and Small Mosfets}
-    {P1_23, PinCapability::rwpwm, "q5"  }, //(Big Mosfet)
-    {P2_5,  PinCapability::rwpwm, "q6" },  //(Big Mosfet)
-    {P2_7,  PinCapability::rwpwm, "q7" },  //(Big Mosfet)
-    {P1_22, PinCapability::rwpwm, "q4" },  //(Small Mosfet)
-    {P2_4,  PinCapability::rwpwm, "q8" },  //(Small Mosfet)
-    {P2_6,  PinCapability::rwpwm, "q9" },  //(Small Mosfet)
+    {P1_23, PinCapability::rwpwm, "e0heat,q5,P1.23"  }, //(Big Mosfet)
+    {P2_5,  PinCapability::rwpwm, "bed,q6,P2.5" },  //(Big Mosfet)
+    {P2_7,  PinCapability::rwpwm, "e1heat,q7,P2.7" },  //(Big Mosfet)
+    {P1_22, PinCapability::rwpwm, "fan0,q4,P1.22" },  //(Small Mosfet)
+    {P2_4,  PinCapability::rwpwm, "fan1,q8,P2.4" },  //(Small Mosfet)
+    {P2_6,  PinCapability::rwpwm, "fan2,q9,P2.6" },  //(Small Mosfet)
 
     //Spare pins (also as LEDs)
     {P1_21, PinCapability::rwpwm, "led1"},

@@ -16,45 +16,45 @@ constexpr PinEntry PinTable_BIQU_SKR_v1_1[] =
     //Common Pins for V1.1 and 1.3
 
     //Thermistors
-    {P0_23, PinCapability::ainrw, "tb"},
-    {P0_24, PinCapability::ainrw, "th0"},
-    {P0_25, PinCapability::ainrw, "th1"},
+    {P0_23, PinCapability::ainrw, "bedtemp,tb,P0.23"},
+    {P0_24, PinCapability::ainrw, "e0heat,th0,P0.24"},
+    {P0_25, PinCapability::ainrw, "e1heat,th1,P0.25"},
 
     //Endstops
-    {P1_29, PinCapability::rw, "xmin"},
-    {P1_28, PinCapability::rw, "xmax"},
-    {P1_27, PinCapability::rw, "ymin"},
-    {P1_26, PinCapability::rw, "ymax"},
-    {P1_25, PinCapability::rw, "zmin"},
-    {P1_24, PinCapability::rw, "zmax"},
+    {P1_29, PinCapability::rw, "xstop,xmin,P1.29"},
+    {P1_28, PinCapability::rw, "xstopmax,xmax,P1.28"},
+    {P1_27, PinCapability::rw, "ystop,ymin,P1.27"},
+    {P1_26, PinCapability::rw, "ystopmax,ymax,P1.26"},
+    {P1_25, PinCapability::rw, "zstop,zmin,P1.25"},
+    {P1_24, PinCapability::rw, "zstopmax,zmax,P1.24"},
 
     //Heaters and Fans (Big and Small Mosfets}
-    {P2_5,  PinCapability::wpwm, "hbed" },
-    {P2_7,  PinCapability::wpwm, "he0" },
-    {P2_4,  PinCapability::wpwm, "he1" },
-    {P2_3,  PinCapability::wpwm, "fan" },
+    {P2_5,  PinCapability::wpwm, "bed,hbed,P2.5" },
+    {P2_7,  PinCapability::wpwm, "e0heat,he0,P2.7" },
+    {P2_4,  PinCapability::wpwm, "e0heat,he1,P2.4" },
+    {P2_3,  PinCapability::wpwm, "fan0,P2.3" },
 
 
     //Exp1
-    //{P0_15, PinCapability::rwpwm, "0.15"}, //SSP0 SCK
-    {P0_16, PinCapability::rwpwm, "0.16"},
-    //{P0_18, PinCapability::rwpwmrw, "0.18"}, //SSP0 MOSI
-    {P2_11, PinCapability::rwpwm, "2.11"},
-    {P1_30, PinCapability::rwpwm, "1.30"},
+    //{P0_15, PinCapability::rwpwm, "P0.15"}, //SSP0 SCK
+    {P0_16, PinCapability::rwpwm, "P0.16"},
+    //{P0_18, PinCapability::rwpwmrw, "P0.18"}, //SSP0 MOSI
+    {P2_11, PinCapability::rwpwm, "P2.11"},
+    {P1_30, PinCapability::rwpwm, "P1.30"},
 
     //Exp2
-    {P1_31, PinCapability::rwpwm, "1.31"},
+    {P1_31, PinCapability::rwpwm, "P1.31"},
     //0.18
-    {P3_25, PinCapability::rwpwm, "3.25"},
-    {P1_23, PinCapability::rwpwm, "1.23"},
-    {P3_26, PinCapability::rwpwm, "3.26"},
-    //{P0_17, PinCapability::rwpwm, "0.17"}, //SSP0 MISO
+    {P3_25, PinCapability::rwpwm, "P3.25"},
+    {P1_23, PinCapability::rwpwm, "P1.23"},
+    {P3_26, PinCapability::rwpwm, "P3.26"},
+    //{P0_17, PinCapability::rwpwm, "P0.17"}, //SSP0 MISO
 
     //LCD/SD/SPI header (most overlap with exp1/2)
     //0.15
     //0.18
     //0.16
-    {P2_6,  PinCapability::rwpwm, "2.6"},
+    {P2_6,  PinCapability::rwpwm, "P2.6"},
     //1.23
     //0.17
     //2.11
@@ -78,58 +78,54 @@ constexpr BoardDefaults biquskr_1_1_Defaults = {
 constexpr PinEntry PinTable_BIQU_SKR_v1_3[] =
 {
     //Thermistors
-    {P0_23, PinCapability::ainrw, "tb"},
-    {P0_24, PinCapability::ainrw, "th0"},
-    {P0_25, PinCapability::ainrw, "th1"},
+    {P0_23, PinCapability::ainrw, "bedtemp,tb,P0.23"},
+    {P0_24, PinCapability::ainrw, "e0temp,th0,P0.24"},
+    {P0_25, PinCapability::ainrw, "e1temp,th1,P0.25"},
     
     //Endstops
-    {P1_29, PinCapability::rwpwm, "xmin,x"},
-    {P1_28, PinCapability::rwpwm, "xmax,x+"},
-    {P1_27, PinCapability::rwpwm, "ymin,y"},
-    {P1_26, PinCapability::rwpwm, "ymax,y+"},
-    {P1_25, PinCapability::rwpwm, "zmin,z"},
-    {P1_24, PinCapability::rwpwm, "zmax,z+"},
+    {P1_29, PinCapability::rwpwm, "xstop,xmin,P1.29"},
+    {P1_28, PinCapability::rwpwm, "xstopmax,xmax,P1.28"},
+    {P1_27, PinCapability::rwpwm, "ystop,ymin,P1.27"},
+    {P1_26, PinCapability::rwpwm, "ystopmax,ymax,P1.26"},
+    {P1_25, PinCapability::rwpwm, "zstop,zmin,P1.25"},
+    {P1_24, PinCapability::rwpwm, "zstopmax,zmax,P1.24"},
     
     //Heaters and Fans (Big and Small Mosfets}
-    {P2_5,  PinCapability::wpwm, "hbed" },
-    {P2_7,  PinCapability::wpwm, "he0" },
-    {P2_4,  PinCapability::wpwm, "he1" },
-    {P2_3,  PinCapability::wpwm, "fan" },
+    {P2_5,  PinCapability::wpwm, "bed,hbed,P2.5" },
+    {P2_7,  PinCapability::wpwm, "e0heat,he0,P2.7" },
+    {P2_4,  PinCapability::wpwm, "e1heat,he1,P2.4" },
+    {P2_3,  PinCapability::wpwm, "fan0,P2.3" },
     
     //Servos
-    {P2_0,  PinCapability::rwpwm, "servo" },
-
-    
-
+    {P2_0,  PinCapability::rwpwm, "servo0,P2.0" },
     
     //EXP1
-    {P1_23, PinCapability::rwpwm, "1.23"},
-    {P1_22, PinCapability::rwpwm, "1.22"},
-    {P1_21, PinCapability::rwpwm, "1.21"},
-    {P1_20, PinCapability::rwpwm, "1.20"},
-    {P1_19, PinCapability::rwpwm, "1.19"},
-    {P1_18, PinCapability::rwpwm, "1.18"},
-    {P0_28, PinCapability::rwpwm, "0.28"},
-    {P1_30, PinCapability::rwpwm, "1.30"},
+    {P1_23, PinCapability::rwpwm, "P1.23"},
+    {P1_22, PinCapability::rwpwm, "P1.22"},
+    {P1_21, PinCapability::rwpwm, "P1.21"},
+    {P1_20, PinCapability::rwpwm, "P1.20"},
+    {P1_19, PinCapability::rwpwm, "P1.19"},
+    {P1_18, PinCapability::rwpwm, "P1.18"},
+    {P0_28, PinCapability::rwpwm, "P0.28"},
+    {P1_30, PinCapability::rwpwm, "P1.30"},
     
     
     //EXP2
-    {P1_31, PinCapability::rwpwm, "1.31"},
-    //{P0_18, PinCapability::rw, "0.18"}, //SSP0 MOSI
-    {P3_25, PinCapability::rwpwm, "3.25"},
-    {P0_16, PinCapability::rwpwm, "0.16"},
-    {P3_26, PinCapability::rwpwm, "3.26"},
-    //{P0_15, PinCapability::rw, "0.15"}, //SSP0 SCK
-    //{P0_17, PinCapability::rw, "0.17"}, //SSP0 MISO
-    
-    
+    {P1_31, PinCapability::rwpwm, "P1.31"},
+    //{P0_18, PinCapability::rw, "P0.18"}, //SSP0 MOSI
+    {P3_25, PinCapability::rwpwm, "P3.25"},
+    {P0_16, PinCapability::rwpwm, "P0.16"},
+    {P3_26, PinCapability::rwpwm, "P3.26"},
+    //{P0_15, PinCapability::rw, "P0.15"}, //SSP0 SCK
+    //{P0_17, PinCapability::rw, "P0.17"}, //SSP0 MISO
+        
     //MONI-SD
-    {P0_27, PinCapability::rwpwm, "data2"},
+    {P0_27, PinCapability::rwpwm, "data2,P0.27"},
     //following pins are the same as the internal sdcard
-    //{P0_8,  PinCapability::rwpwm, "0.8"}, //SSP1 MISO
-    //{P0_7,  PinCapability::rwpwm, "0.7"}, //SSP1 SCK
-    //{P0_9,  PinCapability::rwpwm, "0.9"}, //SSP1 MOSI
-    //{P0_6,  PinCapability::rwpwm, "0.6"}, //SEL (SD CS)
+    //{P0_8,  PinCapability::rwpwm, "P0.8"}, //SSP1 MISO
+    //{P0_7,  PinCapability::rwpwm, "P0.7"}, //SSP1 SCK
+    //{P0_9,  PinCapability::rwpwm, "P0.9"}, //SSP1 MOSI
+    //{P0_6,  PinCapability::rwpwm, "P0.6"}, //SEL (SD CS)
 
 
     //Other Headers on v1.3 Boards
@@ -168,52 +164,61 @@ constexpr BoardDefaults biquskr_1_3_Defaults = {
 constexpr PinEntry PinTable_BIQU_SKR_v1_4[] =
 {
     //Thermistors
-    {P0_23, PinCapability::ainrw, "th1"},
-    {P0_24, PinCapability::ainrw, "th0"},
-    {P0_25, PinCapability::ainrw, "tb"},
+    {P0_23, PinCapability::ainrw, "e1temp,th1,P0.23"},
+    {P0_24, PinCapability::ainrw, "e0temp,th0,P0.24"},
+    {P0_25, PinCapability::ainrw, "bedtemp,tb,P0.25"},
 
     //Endstops
-    {P1_29, PinCapability::rwpwm, "xstop"},
-    {P1_28, PinCapability::rwpwm, "ystop"},
-    {P1_27, PinCapability::rwpwm, "zstop"},
-    {P1_26, PinCapability::rwpwm, "e0stop"},
-    {P1_25, PinCapability::rwpwm, "e1stop"},
-    //Heaters and Fans (Big and Small Mosfets}
-    {P2_5,  PinCapability::wpwm, "hbed" },
-    {P2_7,  PinCapability::wpwm, "he0" },
-    {P2_4,  PinCapability::wpwm, "he1" },
-    {P2_3,  PinCapability::wpwm, "fan" },
+    {P1_29, PinCapability::rwpwm, "xstop,P1.29"},
+    {P1_28, PinCapability::rwpwm, "ystop,P1.28"},
+    {P1_27, PinCapability::rwpwm, "zstop,P1.27"},
+    {P1_26, PinCapability::rwpwm, "e0stop,e0det,P1.26"},
+    {P1_25, PinCapability::rwpwm, "e1stop,e1det,P1.25"},
+    {P1_0, PinCapability::rwpwm, "pwrstop,pwrdet,P1.0"},
+	{P0_10, PinCapability::rwpwm, "probe,P0.10"},
+	
+	//Heaters and Fans (Big and Small Mosfets}
+    {P2_5,  PinCapability::wpwm, "bed,P2.5" },
+    {P2_7,  PinCapability::wpwm, "e0heat,h0,P2.7" },
+    {P2_4,  PinCapability::wpwm, "e1heat,h1,P2.4" },
+    {P2_3,  PinCapability::wpwm, "fan0,P2.3" },
 
     //Servos
-    {P2_0,  PinCapability::rwpwm, "servo" },
+    {P2_0,  PinCapability::rwpwm, "servo0,P2.0" },
 
     //EXP1
-    {P1_23, PinCapability::rwpwm, "1.23"},
-    {P1_22, PinCapability::rwpwm, "1.22"},
-    {P1_21, PinCapability::rwpwm, "1.21"},
-    {P1_20, PinCapability::rwpwm, "1.20"},
-    {P1_19, PinCapability::rwpwm, "1.19"},
-    {P1_18, PinCapability::rwpwm, "1.18"},
-    {P0_28, PinCapability::rwpwm, "0.28"},
-    {P1_30, PinCapability::rwpwm, "1.30"},
+    {P1_23, PinCapability::rwpwm, "P1.23"},
+    {P1_22, PinCapability::rwpwm, "P1.22"},
+    {P1_21, PinCapability::rwpwm, "P1.21"},
+    {P1_20, PinCapability::rwpwm, "P1.20"},
+    {P1_19, PinCapability::rwpwm, "P1.19"},
+    {P1_18, PinCapability::rwpwm, "P1.18"},
+    {P0_28, PinCapability::rwpwm, "P0.28"},
+    {P1_30, PinCapability::rwpwm, "P1.30"},
 
     //EXP2
-    {P1_31, PinCapability::rwpwm, "1.31"},
-    //{P0_18, PinCapability::rw, "0.18"}, //SSP0 MOSI
-    {P3_25, PinCapability::rwpwm, "3.25"},
-    {P0_16, PinCapability::rwpwm, "0.16"},
-    {P3_26, PinCapability::rwpwm, "3.26"},
-    //{P0_15, PinCapability::rw, "0.15"}, //SSP0 SCK
-    //{P0_17, PinCapability::rw, "0.17"}, //SSP0 MISO
+    {P1_31, PinCapability::rwpwm, "P1.31"},
+    //{P0_18, PinCapability::rw, "P0.18"}, //SSP0 MOSI
+    {P3_25, PinCapability::rwpwm, "P3.25"},
+    {P0_16, PinCapability::rwpwm, "P0.16"},
+    {P3_26, PinCapability::rwpwm, "P3.26"},
+    //{P0_15, PinCapability::rw, "P0.15"}, //SSP0 SCK
+    //{P0_17, PinCapability::rw, "P0.17"}, //SSP0 MISO
 
+	//Neopixel
+	{P1_24, PinCapability::rwpwm, "neopixel,P1.24"},
+	
+	//Wifi
+	{P4_28, PinCapability::rwpwm, "P4.28"},
+	{P4_29, PinCapability::rwpwm, "P4.29"},
 
     //MONI-SD
-    {P0_27, PinCapability::rwpwm, "data2"},
+    {P0_27, PinCapability::rwpwm, "data2,P0.27"},
     //following pins are the same as the internal sdcard
-    //{P0_8,  PinCapability::rwpwm, "0.8"}, //SSP1 MISO
-    //{P0_7,  PinCapability::rwpwm, "0.7"}, //SSP1 SCK
-    //{P0_9,  PinCapability::rwpwm, "0.9"}, //SSP1 MOSI
-    //{P0_6,  PinCapability::rwpwm, "0.6"}, //SEL (SD CS)
+    //{P0_8,  PinCapability::rwpwm, "P0.8"}, //SSP1 MISO
+    //{P0_7,  PinCapability::rwpwm, "P0.7"}, //SSP1 SCK
+    //{P0_9,  PinCapability::rwpwm, "P0.9"}, //SSP1 MOSI
+    //{P0_6,  PinCapability::rwpwm, "P0.6"}, //SEL (SD CS)
 
 
     //Other Headers on v1.3 Boards
