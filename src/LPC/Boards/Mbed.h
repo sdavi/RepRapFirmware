@@ -62,8 +62,7 @@ constexpr BoardDefaults mbedDefaults =
     {P3_25,  P0_10, P0_19, P0_21,  P4_29},   //enablePins
     {P2_11,  P2_12, P2_10, P2_3,   P2_8},    //stepPins
     {P3_26,  P4_28, P0_20, P0_22,  P2_13},   //dirPins
-    false,                                   //currentControl
-    113.33,                                 //digiPot Factor
+    0,                                       //digiPot Factor
 };
 
 #endif

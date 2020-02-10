@@ -190,8 +190,7 @@ constexpr BoardDefaults genericDefaults = {
     {NoPin, NoPin, NoPin, NoPin, NoPin},    //enablePins
     {NoPin, NoPin, NoPin, NoPin, NoPin},    //stepPins
     {NoPin, NoPin, NoPin, NoPin, NoPin},    //dirPins
-    false,                                  //currentControl
-    113.33,                                 //digiPot Factor    
+    0,                                      //digiPot Factor    
 };
 
 #endif

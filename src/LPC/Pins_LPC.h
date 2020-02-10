@@ -153,10 +153,6 @@ constexpr size_t MaxSpiTempSensors = 2;
 extern Pin SpiTempSensorCsPins[MaxSpiTempSensors];  // Digital pins the 31855s have their select lines tied to
 constexpr SSPChannel TempSensorSSPChannel = SSP0;   //Connect SPI Temp sensor to SSP0
 
-#if HAS_LINUX_INTERFACE
-    extern Pin LinuxTfrReadyPin;
-#endif
-
 #if defined(ESP8266WIFI)
     extern Pin EspDataReadyPin;
     extern Pin SamTfrReadyPin;
@@ -314,7 +310,6 @@ struct BoardDefaults
     const Pin enablePins[NumDirectDrivers];
     const Pin stepPins[NumDirectDrivers];
     const Pin dirPins[NumDirectDrivers];
-    const bool hasDriverCurrentControl;
     const float digipotFactor;    
 };
 
