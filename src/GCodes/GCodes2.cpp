@@ -92,6 +92,9 @@ bool GCodes::ActOnCode(GCodeBuffer& gb, const StringRef& reply) noexcept
 		case 'T':
 			return HandleTcode(gb, reply);
 
+		case 'Q':
+			return HandleQcode(gb, reply);
+
 		default:
 			break;
 		}
@@ -158,7 +161,11 @@ bool GCodes::HandleGcode(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeEx
 			return false;
 		}
 		{
-			const char* err = DoArcMove(gb, code == 2);
+			const char* err = nullptr;
+			if (!DoArcMove(gb, code == 2, err))
+			{
+				return false;
+			}
 			if (err != nullptr)
 			{
 				AbortPrint(gb);
@@ -409,7 +416,7 @@ bool GCodes::HandleMcode(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeEx
 	if (   simulationMode != 0
 		&& (code < 20 || code > 37)
 		&& code != 0 && code != 1 && code != 82 && code != 83 && code != 105 && code != 109 && code != 111 && code != 112 && code != 122
-		&& code != 200 && code != 204 && code != 207 && code != 408 && code != 999)
+		&& code != 200 && code != 204 && code != 207 && code != 408 && code != 409 && code != 999)
 	{
 		HandleReply(gb, GCodeResult::ok, "");
 		return true;			// we don't simulate most M codes
@@ -2296,8 +2303,7 @@ bool GCodes::HandleMcode(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeEx
 				if ((sParam == 2 || sParam == 3) && Push(gb, true))					// stack the machine state including the file position
 				{
 					UnlockMovement(gb);												// allow movement so that e.g. an SD card print can call M291 and then DWC or PanelDue can be used to jog axes
-					gb.MachineState().CloseFile();									// stop reading from file
-					gb.MachineState().waitingForAcknowledgement = true;				// flag that we are waiting for acknowledgement
+					gb.MachineState().WaitForAcknowledgement();						// flag that we are waiting for acknowledgement
 				}
 
 				// Display the message box on all relevant devices. Acknowledging any one of them clears them all.
@@ -2504,12 +2510,12 @@ bool GCodes::HandleMcode(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeEx
 
 		case 401: // Deploy Z probe
 			{
-				const size_t probeNumber = (gb.Seen('P')) ? gb.GetUIValue() : 0;
-				auto zp = platform.GetEndstops().GetZProbe(probeNumber);
+				currentZProbeNumber = (gb.Seen('P')) ? gb.GetUIValue() : 0;
+				auto zp = platform.GetEndstops().GetZProbe(currentZProbeNumber);
 				if (zp.IsNotNull() && zp->GetProbeType() != ZProbeType::none)
 				{
 					zp->SetDeployedByUser(false);							// pretend that the probe isn't deployed, to make sure we deploy it unconditionally
-					DeployZProbe(gb, probeNumber, 401);
+					DeployZProbe(gb, 401);
 					zp->SetDeployedByUser(true);							// probe is now deployed
 				}
 			}
@@ -2517,12 +2523,12 @@ bool GCodes::HandleMcode(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeEx
 
 		case 402: // Retract Z probe
 			{
-				const size_t probeNumber = (gb.Seen('P')) ? gb.GetUIValue() : 0;
-				auto zp = platform.GetEndstops().GetZProbe(probeNumber);
+				currentZProbeNumber = (gb.Seen('P')) ? gb.GetUIValue() : 0;
+				auto zp = platform.GetEndstops().GetZProbe(currentZProbeNumber);
 				if (zp.IsNotNull() && zp->GetProbeType() != ZProbeType::none)
 				{
 					zp->SetDeployedByUser(false);							// do this first, otherwise the probe won't be retracted
-					RetractZProbe(gb, probeNumber, 402);
+					RetractZProbe(gb, 402);
 				}
 			}
 			break;
@@ -2726,6 +2732,10 @@ bool GCodes::HandleMcode(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeEx
 				}
 				result = (MassStorage::Rename(oldVal.c_str(), newVal.c_str(), true)) ? GCodeResult::ok : GCodeResult::error;
 			}
+			break;
+
+		case 486: // number object or cancel object
+			result = buildObjects.HandleM486(gb, reply);
 			break;
 
 		case 500: // Store parameters in config-override.g
@@ -3244,7 +3254,6 @@ bool GCodes::HandleMcode(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeEx
 			break;
 
 		case 573: // Report heater average PWM
-			if (gb.Seen('P'))
 			{
 				const unsigned int heater = gb.GetLimitedUIValue('P', MaxHeaters);
 				reply.printf("Average heater %u PWM: %.3f", heater, (double)reprap.GetHeat().GetAveragePWM(heater));
@@ -3960,7 +3969,7 @@ bool GCodes::HandleMcode(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeEx
 
 		case 851: // Set Z probe offset, only for Marlin compatibility
 			{
-				auto zp = platform.GetCurrentZProbe();
+				auto zp = platform.GetZProbeOrDefault(0);
 				if (gb.Seen('Z'))
 				{
 					zp->SetTriggerHeight(-gb.GetFValue());
@@ -4314,22 +4323,25 @@ bool GCodes::HandleTcode(GCodeBuffer& gb, const StringRef& reply)
 			return false;
 		}
 
-		const Tool * const oldTool = reprap.GetCurrentTool();
-		// If old and new are the same we no longer follow the sequence. User can deselect and then reselect the tool if he wants the macros run.
-		if (oldTool == nullptr || oldTool->Number() != toolNum)
+		if (buildObjects.IsCurrentObjectCancelled())
 		{
-			newToolNumber = toolNum;
-			toolChangeParam = (simulationMode != 0) ? 0
-								: gb.Seen('P') ? gb.GetUIValue()
-									: DefaultToolChangeParam;
-			gb.SetState(GCodeState::toolChange0);
-			return true;							// proceeding with state machine, so don't unlock or send a reply
+			buildObjects.SetVirtualTool(toolNum);				// don't do the tool change, just remember which one we are supposed to use
 		}
 		else
 		{
-			// Even though the tool is selected, we may have turned it off e.g. when upgrading the WiFi firmware or following a heater fault that has been cleared.
-			// So make sure the tool heaters are on.
-			reprap.SelectTool(toolNum, simulationMode != 0);
+			const Tool * const oldTool = reprap.GetCurrentTool();
+			// If old and new are the same we no longer follow the sequence. User can deselect and then reselect the tool if he wants the macros run.
+			if (oldTool == nullptr || oldTool->Number() != toolNum)
+			{
+				StartToolChange(gb, toolNum, (gb.Seen('P')) ? gb.GetUIValue() : DefaultToolChangeParam);
+				return true;									// proceeding with state machine, so don't unlock or send a reply
+			}
+			else
+			{
+				// Even though the tool is selected, we may have turned it off e.g. when upgrading the WiFi firmware or following a heater fault that has been cleared.
+				// So make sure the tool heaters are on.
+				reprap.SelectTool(toolNum, simulationMode != 0);
+			}
 		}
 	}
 	else
@@ -4350,6 +4362,20 @@ bool GCodes::HandleTcode(GCodeBuffer& gb, const StringRef& reply)
 	UnlockAll(gb);
 	HandleReply(gb, GCodeResult::ok, reply.c_str());
 	return true;
+}
+
+// This is called to handle internally-generated codes
+bool GCodes::HandleQcode(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException)
+{
+	// Currently we don't need to worry about whether we are simulating or not
+	switch (gb.GetCommandNumber())
+	{
+	case 0:	// process a whole-line comment in the print file
+		return ProcessWholeLineComment(gb, reply);
+
+	default:
+		return true;					// at present these are always internally-generated, so no handling of unknown codes
+	}
 }
 
 // This is called to deal with the result of processing a G- or M-code

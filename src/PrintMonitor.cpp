@@ -48,6 +48,9 @@ constexpr ObjectModelTableEntry PrintMonitor::objectModelTable[] =
 {
 	// Within each group, these entries must be in alphabetical order
 	// 0. PrintMonitor members
+#if TRACK_OBJECT_NAMES
+	{ "build",				OBJECT_MODEL_FUNC_IF(self->IsPrinting(), reprap.GetGCodes().GetBuildObjects(), 0), 									ObjectModelEntryFlags::live },
+#endif
 	{ "duration",			OBJECT_MODEL_FUNC_IF(self->IsPrinting(), self->GetPrintDuration(), 1), 												ObjectModelEntryFlags::live },
 	{ "file",				OBJECT_MODEL_FUNC(self, 1),							 																ObjectModelEntryFlags::none },
 	{ "filePosition",		OBJECT_MODEL_FUNC_NOSELF(reprap.GetGCodes().GetFilePosition(), 0),													ObjectModelEntryFlags::live },
@@ -78,7 +81,7 @@ constexpr ObjectModelTableEntry PrintMonitor::objectModelTable[] =
 	{ "layer",				OBJECT_MODEL_FUNC(self->EstimateTimeLeftAsExpression(layerBased)),													ObjectModelEntryFlags::live },
 };
 
-constexpr uint8_t PrintMonitor::objectModelTableDescriptor[] = { 3, 9, 11, 3 };
+constexpr uint8_t PrintMonitor::objectModelTableDescriptor[] = { 3, 9 + TRACK_OBJECT_NAMES, 11, 3 };
 
 DEFINE_GET_OBJECT_MODEL_TABLE(PrintMonitor)
 
@@ -194,6 +197,7 @@ void PrintMonitor::Spin() noexcept
 			if (gCodes.GetLastPrintingHeight(currentZ))
 			{
 				// Print is in progress and filament is being extruded
+				//TODO use lastLayerNumberNotified and lastLayerStartHeightNotified if available
 				if (currentLayer == 0)
 				{
 					currentLayer = 1;
@@ -262,14 +266,45 @@ void PrintMonitor::StartingPrint(const char* filename) noexcept
 #endif
 }
 
+void PrintMonitor::Reset() noexcept
+{
+	currentLayer = numLayerSamples = 0;
+	pauseStartTime = totalPauseTime = 0;
+	firstLayerDuration = firstLayerFilament = firstLayerProgress = 0.0;
+	layerEstimatedTimeLeft = printStartTime = warmUpDuration = 0.0;
+	lastLayerChangeTime = lastLayerFilament = lastLayerZ = 0.0;
+	lastLayerNumberNotified = 0;
+	lastLayerStartHeightNotified = 0.0;
+	reprap.JobUpdated();
+}
+
 // Tell this class that the file set for printing is now actually processed
 void PrintMonitor::StartedPrint() noexcept
 {
+	Reset();
 	isPrinting = true;
 	heatingUp = false;
 	printStartTime = millis64();
-	warmUpDuration = 0.0;
-	reprap.JobUpdated();					// needed because isPrinting true makes filenameBeingPrinted available
+}
+
+void PrintMonitor::StoppedPrint() noexcept
+{
+	Reset();
+	isPrinting = heatingUp = printingFileParsed = false;
+}
+
+// Set the current layer number as given in a comment
+// The Z move to the new layer probably hasn't been done yet, so just store the layer number.
+void PrintMonitor::SetLayerNumber(uint32_t layerNumber) noexcept
+{
+	lastLayerNumberNotified = layerNumber;
+}
+
+// Set the printing height of the new layer
+// The Z move to the new layer probably hasn't been done yet, so just store the layer print height.
+void PrintMonitor::SetLayerZ(float layerZ) noexcept
+{
+	lastLayerStartHeightNotified = layerZ;
 }
 
 // Called when the first layer has been finished
@@ -349,17 +384,6 @@ void PrintMonitor::LayerComplete() noexcept
 			layerEstimatedTimeLeft = 0.1;
 		}
 	}
-}
-
-void PrintMonitor::StoppedPrint() noexcept
-{
-	isPrinting = heatingUp = printingFileParsed = false;
-	currentLayer = numLayerSamples = 0;
-	pauseStartTime = totalPauseTime = 0;
-	firstLayerDuration = firstLayerFilament = firstLayerProgress = 0.0;
-	layerEstimatedTimeLeft = printStartTime = warmUpDuration = 0.0;
-	lastLayerChangeTime = lastLayerFilament = lastLayerZ = 0.0;
-	reprap.JobUpdated();
 }
 
 float PrintMonitor::FractionOfFilePrinted() const noexcept

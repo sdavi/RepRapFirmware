@@ -107,7 +107,7 @@ void GCodeBuffer::Reset() noexcept
 	while (PopState(false)) { }
 #if HAS_LINUX_INTERFACE
 	requestedMacroFile.Clear();
-	reportMissingMacro = isMacroFromCode = abortFile = abortAllFiles = reportStack = false;
+	reportMissingMacro = isMacroFromCode = abortFile = abortAllFiles = false;
 	isBinaryBuffer = false;
 #endif
 	Init();
@@ -277,6 +277,11 @@ bool GCodeBuffer::HasCommandNumber() const noexcept
 int GCodeBuffer::GetCommandNumber() const noexcept
 {
 	return PARSER_OPERATION(GetCommandNumber());
+}
+
+const char *GCodeBuffer::GetCompleteParameters() noexcept
+{
+	return PARSER_OPERATION(GetCompleteParameters());
 }
 
 int8_t GCodeBuffer::GetCommandFraction() const noexcept
@@ -653,9 +658,6 @@ bool GCodeBuffer::PopState(bool withinSameFile) noexcept
 	}
 	delete ms;
 
-#if HAS_LINUX_INTERFACE
-	reportStack = true;
-#endif
 	return true;
 }
 

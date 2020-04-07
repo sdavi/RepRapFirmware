@@ -264,7 +264,7 @@ constexpr ObjectModelTableEntry Platform::objectModelTable[] =
 	// 3. move.axes[] members
 	{ "acceleration",		OBJECT_MODEL_FUNC(self->Acceleration(context.GetLastIndex()), 1),									ObjectModelEntryFlags::none },
 	{ "babystep",			OBJECT_MODEL_FUNC_NOSELF(reprap.GetGCodes().GetTotalBabyStepOffset(context.GetLastIndex()), 3),		ObjectModelEntryFlags::none },
-	{ "current",			OBJECT_MODEL_FUNC(self->GetMotorCurrent(context.GetLastIndex(), 906), 3),							ObjectModelEntryFlags::none },
+	{ "current",			OBJECT_MODEL_FUNC(lrintf(self->GetMotorCurrent(context.GetLastIndex(), 906))),						ObjectModelEntryFlags::none },
 	{ "drivers",			OBJECT_MODEL_FUNC_NOSELF(&axisDriversArrayDescriptor),												ObjectModelEntryFlags::none },
 	{ "homed",				OBJECT_MODEL_FUNC_NOSELF(reprap.GetGCodes().IsAxisHomed(context.GetLastIndex())),					ObjectModelEntryFlags::live },
 	{ "jerk",				OBJECT_MODEL_FUNC(MinutesToSeconds * self->GetInstantDv(context.GetLastIndex()), 1),				ObjectModelEntryFlags::none },
@@ -281,7 +281,7 @@ constexpr ObjectModelTableEntry Platform::objectModelTable[] =
 
 	// 4. move.extruders[] members
 	{ "acceleration",		OBJECT_MODEL_FUNC(self->Acceleration(ExtruderToLogicalDrive(context.GetLastIndex())), 1),			ObjectModelEntryFlags::none },
-	{ "current",			OBJECT_MODEL_FUNC(self->GetMotorCurrent(ExtruderToLogicalDrive(context.GetLastIndex()), 906), 3),	ObjectModelEntryFlags::none },
+	{ "current",			OBJECT_MODEL_FUNC(lrintf(self->GetMotorCurrent(ExtruderToLogicalDrive(context.GetLastIndex()), 906))),	ObjectModelEntryFlags::none },
 	{ "driver",				OBJECT_MODEL_FUNC(self->extruderDrivers[context.GetLastIndex()]),									ObjectModelEntryFlags::none },
 	{ "factor",				OBJECT_MODEL_FUNC_NOSELF(reprap.GetGCodes().GetExtrusionFactor(context.GetLastIndex()), 1),			ObjectModelEntryFlags::none },
 	{ "filament",			OBJECT_MODEL_FUNC_NOSELF(GetFilamentName(context.GetLastIndex())),									ObjectModelEntryFlags::none },
@@ -3287,7 +3287,7 @@ void Platform::Message(MessageType type, const char *message) noexcept
 // sParam = 3 As for 2 but also display a Cancel button
 void Platform::SendAlert(MessageType mt, const char *message, const char *title, int sParam, float tParam, AxesBitmap controls) noexcept
 {
-	if ((mt & (HttpMessage | AuxMessage | BinaryCodeReplyFlag)) != 0)
+	if ((mt & (HttpMessage | AuxMessage | LcdMessage | BinaryCodeReplyFlag)) != 0)
 	{
 		reprap.SetAlert(message, title, sParam, tParam, controls);		// make the RepRap class cache this message until it's picked up by the HTTP clients and/or PanelDue
 	}
@@ -3879,11 +3879,6 @@ void Platform::SetAxisMinimum(size_t axis, float value, bool byProbing) noexcept
 	reprap.MoveUpdated();
 }
 
-ZProbeType Platform::GetCurrentZProbeType() const noexcept
-{
-	return endstops.GetCurrentOrDefaultZProbe()->GetProbeType();
-}
-
 void Platform::InitZProbeFilters() noexcept
 {
 	zProbeOnFilter.Init(0);
@@ -4220,13 +4215,11 @@ GCodeResult Platform::ConfigurePort(GCodeBuffer& gb, const StringRef& reply) THR
 {
 	// Exactly one of FHJPS is allowed
 	unsigned int charsPresent = 0;
-	uint32_t deviceNumber = 0;
 	for (char c : (const char[]){'J', 'F', 'H', 'P', 'S'})
 	{
 		charsPresent <<= 1;
 		if (gb.Seen(c))
 		{
-			deviceNumber = gb.GetUIValue();
 			charsPresent |= 1;
 		}
 	}
@@ -4234,48 +4227,33 @@ GCodeResult Platform::ConfigurePort(GCodeBuffer& gb, const StringRef& reply) THR
 	switch (charsPresent)
 	{
 	case 1:
-		return ConfigureGpOutOrServo(deviceNumber, true, gb, reply);
+		{
+			const uint32_t gpioNumber = gb.GetLimitedUIValue('S', MaxGpOutPorts);
+			return gpoutPorts[gpioNumber].Configure(gpioNumber, true, gb, reply);
+		}
 
 	case 2:
-		return ConfigureGpOutOrServo(deviceNumber, false, gb, reply);
+		{
+			const uint32_t gpioNumber = gb.GetLimitedUIValue('P', MaxGpOutPorts);
+			return gpoutPorts[gpioNumber].Configure(gpioNumber, false, gb, reply);
+		}
 
 	case 4:
-		return reprap.GetHeat().ConfigureHeater(deviceNumber, gb, reply);
+		return reprap.GetHeat().ConfigureHeater(gb, reply);
 
 	case 8:
-		return reprap.GetFansManager().ConfigureFanPort(deviceNumber, gb, reply);
+		return reprap.GetFansManager().ConfigureFanPort(gb, reply);
 
 	case 16:
-		return ConfigureGpIn(deviceNumber, gb, reply);
+		{
+			const uint32_t gpinNumber = gb.GetLimitedUIValue('J', MaxGpInPorts);
+			return gpinPorts[gpinNumber].Configure(gpinNumber, gb, reply);
+		}
 
 	default:
 		reply.copy("exactly one of FHJPS must be given");
 		return GCodeResult::error;
 	}
-}
-
-// Configure a general purpose output pin
-GCodeResult Platform::ConfigureGpOutOrServo(uint32_t gpioNumber, bool isServo, GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException)
-{
-	if (gpioNumber < MaxGpOutPorts)
-	{
-		return gpoutPorts[gpioNumber].Configure(gpioNumber, isServo, gb, reply);
-	}
-
-	reply.copy("GPIO port number out of range");
-	return GCodeResult::error;
-}
-
-// Configure a general purpose input pin
-GCodeResult Platform::ConfigureGpIn(uint32_t gpinNumber, GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException)
-{
-	if (gpinNumber < MaxGpInPorts)
-	{
-		return gpinPorts[gpinNumber].Configure(gpinNumber, gb, reply);
-	}
-
-	reply.copy("GPIO port number out of range");
-	return GCodeResult::error;
 }
 
 #if SUPPORT_CAN_EXPANSION
@@ -4404,7 +4382,7 @@ void Platform::Tick() noexcept
 	}
 #endif
 
-	const ZProbe& currentZProbe = endstops.GetCurrentOrDefaultZProbeFromISR();
+	const ZProbe& currentZProbe = endstops.GetDefaultZProbeFromISR();
 	switch (tickState)
 	{
 	case 1:

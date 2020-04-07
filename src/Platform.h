@@ -378,6 +378,7 @@ public:
 	void SetDirection(size_t axisOrExtruder, bool direction) noexcept;
 	void SetDirectionValue(size_t driver, bool dVal) noexcept;
 	bool GetDirectionValue(size_t driver) const noexcept;
+	void SetDriverAbsoluteDirection(size_t driver, bool dVal) noexcept;
 	void SetEnableValue(size_t driver, int8_t eVal) noexcept;
 	int8_t GetEnableValue(size_t driver) const noexcept;
 	void EnableLocalDrivers(size_t axisOrExtruder) noexcept;
@@ -448,8 +449,7 @@ public:
 
 	// Endstops and Z probe
 	EndstopsManager& GetEndstops() noexcept { return endstops; }
-	ReadLockedPointer<ZProbe> GetCurrentZProbe() noexcept { return endstops.GetCurrentOrDefaultZProbe(); }
-	ZProbeType GetCurrentZProbeType() const noexcept;
+	ReadLockedPointer<ZProbe> GetZProbeOrDefault(size_t probeNumber) noexcept { return endstops.GetZProbeOrDefault(probeNumber); }
 	void InitZProbeFilters() noexcept;
 	const volatile ZProbeAveragingFilter& GetZProbeOnFilter() const noexcept { return zProbeOnFilter; }
 	const volatile ZProbeAveragingFilter& GetZProbeOffFilter() const  noexcept{ return zProbeOffFilter; }
@@ -577,9 +577,6 @@ private:
 
 	void ResetChannel(size_t chan) noexcept;							// re-initialise a serial channel
 	float AdcReadingToCpuTemperature(uint32_t reading) const noexcept;
-
-	GCodeResult ConfigureGpOutOrServo(uint32_t gpioNumber, bool isServo, GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException);
-	GCodeResult ConfigureGpIn(uint32_t gpinNumber, GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException);
 
 #if SUPPORT_CAN_EXPANSION
 	void IterateDrivers(size_t axisOrExtruder, std::function<void(uint8_t) /*noexcept*/ > localFunc, std::function<void(DriverId) /*noexcept*/ > remoteFunc) noexcept;
@@ -919,6 +916,14 @@ inline void Platform::SetDriverDirection(uint8_t driver, bool direction) noexcep
 	{
 		const bool d = (direction == FORWARDS) ? directions[driver] : !directions[driver];
 		digitalWrite(DIRECTION_PINS[driver], d);
+	}
+}
+
+inline void Platform::SetDriverAbsoluteDirection(size_t driver, bool direction) noexcept
+{
+	if (driver < NumDirectDrivers)
+	{
+		digitalWrite(DIRECTION_PINS[driver], direction);
 	}
 }
 

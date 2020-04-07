@@ -25,6 +25,7 @@ Licence: GPL
 #include "RepRapFirmware.h"
 #include "RepRap.h"			// for type ResponseSource
 #include "GCodeResult.h"
+#include "ObjectTracker.h"
 #include "Movement/RawMove.h"
 #include "Libraries/sha1/sha1.h"
 #include "Platform.h"		// for type EndStopHit
@@ -113,12 +114,12 @@ public:
 	void SetAxisNotHomed(unsigned int axis) noexcept;							// Tell us that the axis is not homed
 	void SetAllAxesNotHomed() noexcept;											// Flag all axes as not homed
 
-	float GetSpeedFactor() const noexcept { return speedFactor; }				// Return the current speed factor
+	float GetSpeedFactor() const noexcept { return speedFactor; }				// Return the current speed factor as a fraction
+	float GetExtrusionFactor(size_t extruder) noexcept;							// Return the current extrusion factor for the specified extruder
 #if SUPPORT_12864_LCD
 	void SetSpeedFactor(float factor) noexcept;									// Set the speed factor
+	void SetExtrusionFactor(size_t extruder, float factor) noexcept;			// Set an extrusion factor for the specified extruder
 #endif
-	float GetExtrusionFactor(size_t extruder) noexcept;							// Return the current extrusion factors
-	void SetExtrusionFactor(size_t extruder, float factor) noexcept;			// Set an extrusion factor
 
 	float GetRawExtruderTotalByDrive(size_t extruder) const noexcept;			// Get the total extrusion since start of print, for one drive
 	float GetTotalRawExtrusion() const noexcept { return rawExtruderTotal; }	// Get the total extrusion since start of print, all drives
@@ -192,6 +193,7 @@ public:
 	void ActivateHeightmap(bool activate) noexcept;								// (De-)Activate the height map
 
 	int GetNewToolNumber() const noexcept { return newToolNumber; }
+	size_t GetCurrentZProbeNumber() const noexcept { return currentZProbeNumber; }
 
 	// These next two are public because they are used by class LinuxInterface
 	void UnlockAll(const GCodeBuffer& gb) noexcept;								// Release all locks
@@ -201,29 +203,28 @@ public:
 	GCodeResult StartSDTiming(GCodeBuffer& gb, const StringRef& reply) noexcept;	// Start timing SD card file writing
 #endif
 
+	void SavePosition(RestorePoint& rp, const GCodeBuffer& gb) const noexcept;		// Save position etc. to a restore point
+	void SaveSpindleSpeeds(RestorePoint& rp) const noexcept;						// Save spindle speeds to a restore point
+	void StartToolChange(GCodeBuffer& gb, int toolNum, uint8_t toolChangeParam) noexcept;
+
 	unsigned int GetWorkplaceCoordinateSystemNumber() const noexcept { return currentCoordinateSystem + 1; }
 
 	// This function is called by other functions to account correctly for workplace coordinates
-	inline float GetWorkplaceOffset(size_t axis) const noexcept
+	float GetWorkplaceOffset(size_t axis) const noexcept
 	{
 		return workplaceCoordinates[currentCoordinateSystem][axis];
 	}
 
 #if SUPPORT_OBJECT_MODEL
-	inline float GetWorkplaceOffset(size_t axis, size_t workplaceNumber) const noexcept
+	float GetWorkplaceOffset(size_t axis, size_t workplaceNumber) const noexcept
 	{
 		return workplaceCoordinates[workplaceNumber][axis];
 	}
 
-	inline size_t GetNumInputs() const noexcept
-	{
-		return NumGCodeChannels;
-	}
-
-	inline const GCodeBuffer* GetInput(size_t n) const noexcept
-	{
-		return gcodeSources[n];
-	}
+	size_t GetNumInputs() const noexcept { return NumGCodeChannels; }
+	const GCodeBuffer* GetInput(size_t n) const noexcept { return gcodeSources[n]; }
+	const GCodeBuffer* GetInput(GCodeChannel n) const noexcept { return gcodeSources[n.RawValue()]; }
+	const ObjectTracker *GetBuildObjects() const noexcept { return &buildObjects; }
 
 # if HAS_VOLTAGE_MONITOR
 	const char *GetPowerFailScript() const noexcept { return powerFailScript; }
@@ -298,22 +299,21 @@ private:
 	bool HandleGcode(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException);	// Do a G code
 	bool HandleMcode(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException);	// Do an M code
 	bool HandleTcode(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException);	// Do a T code
+	bool HandleQcode(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException);	// Do an internal code
 	bool HandleResult(GCodeBuffer& gb, GCodeResult rslt, const StringRef& reply, OutputBuffer *outBuf)
 		pre(outBuf == nullptr || rslt == GCodeResult::ok) noexcept;
 
 	void HandleReply(GCodeBuffer& gb, OutputBuffer *reply) noexcept;
 
 	bool DoStraightMove(GCodeBuffer& gb, bool isCoordinated, const char *& err) __attribute__((hot));	// Execute a straight move
-	const char* DoArcMove(GCodeBuffer& gb, bool clockwise)							// Execute an arc move returning any error message
+	bool DoArcMove(GCodeBuffer& gb, bool clockwise, const char *& err)				// Execute an arc move
 		pre(segmentsLeft == 0; resourceOwners[MoveResource] == &gb);
 	void FinaliseMove(GCodeBuffer& gb) noexcept;									// Adjust the move parameters to account for segmentation and/or part of the move having been done already
 	bool CheckEnoughAxesHomed(AxesBitmap axesMoved) noexcept;						// Check that enough axes have been homed
+	bool TravelToStartPoint(GCodeBuffer& gb) noexcept;								// Set up a move to travel to the resume point
 
 	GCodeResult DoDwell(GCodeBuffer& gb) noexcept;									// Wait for a bit
 	GCodeResult DoHome(GCodeBuffer& gb, const StringRef& reply);					// Home some axes
-	GCodeResult ExecuteG30(GCodeBuffer& gb, const StringRef& reply);				// Probes at a given position - see the comment at the head of the function itself
-	void InitialiseTaps() noexcept;													// Set up to do the first of a possibly multi-tap probe
-	void SetBedEquationWithProbe(int sParam, const StringRef& reply);				// Probes a series of points and sets the bed equation
 	GCodeResult SetOrReportOffsets(GCodeBuffer& gb, const StringRef& reply);		// Deal with a G10
 	GCodeResult SetPositions(GCodeBuffer& gb);										// Deal with a G92
 	GCodeResult StraightProbe(GCodeBuffer& gb, const StringRef& reply);				// Deal with a G38.x
@@ -322,7 +322,9 @@ private:
 	GCodeResult FindCenterOfCavity(GCodeBuffer& gb, const StringRef& reply, const bool towardsMin = true) THROWS(GCodeException);	// Deal with a M675
 	GCodeResult SetDateTime(GCodeBuffer& gb,const  StringRef& reply) noexcept;		// Deal with a M905
 	GCodeResult SavePosition(GCodeBuffer& gb,const  StringRef& reply) noexcept;		// Deal with G60
-	GCodeResult ConfigureDriver(GCodeBuffer& gb,const  StringRef& reply) noexcept;	// Deal with M569
+	GCodeResult ConfigureDriver(GCodeBuffer& gb, const StringRef& reply) noexcept;	// Deal with M569
+
+	bool ProcessWholeLineComment(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException);	// Process a whole-line comment
 
 	const char *LoadExtrusionAndFeedrateFromGCode(GCodeBuffer& gb, bool isPrintingMove);	// Set up the extrusion of a move
 
@@ -348,7 +350,6 @@ private:
 	OutputBuffer *GenerateJsonStatusResponse(int type, int seq, ResponseSource source) const noexcept;	// Generate a M408 response
 	void CheckReportDue(GCodeBuffer& gb, const StringRef& reply) const;			// Check whether we need to report temperatures or status
 
-	void SavePosition(RestorePoint& rp, const GCodeBuffer& gb) const noexcept;	// Save position to a restore point
 	void RestorePosition(const RestorePoint& rp, GCodeBuffer *gb) noexcept;		// Restore user position from a restore point
 
 	void UpdateCurrentUserPosition() noexcept;									// Get the current position from the Move class
@@ -384,7 +385,12 @@ private:
 	GCodeResult SaveHeightMap(GCodeBuffer& gb, const StringRef& reply) const;	// Save the height map to the file specified by P parameter
 #endif
 	void ClearBedMapping();														// Stop using bed compensation
-	GCodeResult ProbeGrid(GCodeBuffer& gb, const StringRef& reply);				// Start probing the grid, returning true if we didn't because of an error
+	GCodeResult ProbeGrid(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException);	// Start probing the grid, returning true if we didn't because of an error
+	ReadLockedPointer<ZProbe> SetZProbeNumber(GCodeBuffer& gb) THROWS(GCodeException);		// Set up currentZProbeNumber and return the probe
+	GCodeResult ExecuteG30(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException);	// Probes at a given position - see the comment at the head of the function itself
+	void InitialiseTaps() noexcept;												// Set up to do the first of a possibly multi-tap probe
+	void SetBedEquationWithProbe(int sParam, const StringRef& reply);			// Probes a series of points and sets the bed equation
+
 	GCodeResult ConfigureTrigger(GCodeBuffer& gb, const StringRef& reply);		// Handle M581
 	GCodeResult CheckTrigger(GCodeBuffer& gb, const StringRef& reply);			// Handle M582
 	GCodeResult UpdateFirmware(GCodeBuffer& gb, const StringRef &reply);		// Handle M997
@@ -398,7 +404,7 @@ private:
 
 #if HAS_MASS_STORAGE
 	GCodeResult WriteConfigOverrideFile(GCodeBuffer& gb, const StringRef& reply) const noexcept; // Write the config-override file
-	bool WriteConfigOverrideHeader(FileStore *f) const noexcept;							// Write the config-override header
+	bool WriteConfigOverrideHeader(FileStore *f) const noexcept;				// Write the config-override header
 #endif
 
 	void CopyConfigFinalValues(GCodeBuffer& gb) noexcept;						// Copy the feed rate etc. from the daemon to the input channels
@@ -406,8 +412,8 @@ private:
 	MessageType GetMessageBoxDevice(GCodeBuffer& gb) const;						// Decide which device to display a message box on
 	void DoManualProbe(GCodeBuffer&, const char *message, const char *title, const AxesBitmap); // Do manual probe in arbitrary direction
 	void DoManualBedProbe(GCodeBuffer& gb);										// Do a manual bed probe
-	void DeployZProbe(GCodeBuffer& gb, unsigned int probeNumber, int code) noexcept;
-	void RetractZProbe(GCodeBuffer& gb, unsigned int probeNumber, int code) noexcept;
+	void DeployZProbe(GCodeBuffer& gb, int code) noexcept;
+	void RetractZProbe(GCodeBuffer& gb, int code) noexcept;
 
 	void AppendAxes(const StringRef& reply, AxesBitmap axes) const noexcept;	// Append a list of axes to a string
 
@@ -542,10 +548,10 @@ private:
 	AxesBitmap toBeHomed;						// Bitmap of axes still to be homed
 	AxesBitmap axesHomed;						// Bitmap of which axes have been homed
 
-	float pausedFanSpeeds[MaxFans];			// Fan speeds when the print was paused or a tool change started
+	float pausedFanSpeeds[MaxFans];				// Fan speeds when the print was paused or a tool change started
 	float lastDefaultFanSpeed;					// Last speed given in a M106 command with on fan number
 	float pausedDefaultFanSpeed;				// The speed of the default print cooling fan when the print was paused or a tool change started
-	float speedFactor;							// speed factor as a percentage (normally 100.0)
+	float speedFactor;							// speed factor as a fraction (normally 1.0)
 	float extrusionFactors[MaxExtruders];		// extrusion factors (normally 1.0)
 	float volumetricExtrusionFactors[MaxExtruders]; // Volumetric extrusion factors
 	float currentBabyStepOffsets[MaxAxes];		// The accumulated axis offsets due to baby stepping requests
@@ -567,6 +573,7 @@ private:
 	bool hadProbingError;						// true if there was an error probing the last point
 	bool zDatumSetByProbing;					// true if the Z position was last set by probing, not by an endstop switch or by G92
 	uint8_t tapsDone;							// how many times we tapped the current point
+	uint8_t currentZProbeNumber;				// which Z probe a G29 or G30 command is using
 
 	float simulationTime;						// Accumulated simulation time
 	uint8_t simulationMode;						// 0 = not simulating, 1 = simulating, >1 are simulation modes for debugging
@@ -604,6 +611,9 @@ private:
 	HeaterFaultState heaterFaultState;			// whether there is a heater fault and what we have done about it so far
 	uint32_t heaterFaultTime;					// when the heater fault occurred
 	uint32_t heaterFaultTimeout;				// how long we wait for the user to fix it before turning everything off
+
+	// Object cancellation
+	ObjectTracker buildObjects;
 
 	// Misc
 	uint32_t lastWarningMillis;					// When we last sent a warning message for things that can happen very often

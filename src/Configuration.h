@@ -59,7 +59,7 @@ constexpr uint32_t MinimumWarningInterval = 4000;		// Milliseconds, must be at l
 constexpr uint32_t LogFlushInterval = 15000;			// Milliseconds
 constexpr uint32_t DriverCoolingTimeout = 4000;			// Milliseconds
 constexpr float DefaultMessageTimeout = 10.0;			// How long a message is displayed by default, in seconds
-constexpr uint16_t MinimumGpinReportInterval = 30;		// Minimum interval between input change reports sent over CAN bus
+constexpr uint16_t MinimumGpinReportInterval = 30;		// Minimum interval in milliseconds between input change reports sent over CAN bus
 
 constexpr uint32_t MinimumOpenLoadFullStepsPerSec = 20;	// this is 4mm/sec @ 80steps/mm
 
@@ -164,7 +164,7 @@ constexpr size_t MaxCalibrationPoints = 16; 			// Should a power of 2 for speed
 # error
 #endif
 
-const float DefaultGridSpacing = 20.0;					// Default bed probing grid spacing in mm
+constexpr float DefaultGridSpacing = 20.0;				// Default bed probing grid spacing in mm
 
 static_assert(MaxCalibrationPoints <= MaxProbePoints, "MaxCalibrationPoints must be <= MaxProbePoints");
 
@@ -205,6 +205,7 @@ constexpr size_t MaxFilenameLength = 100;
 constexpr size_t MaxVariableNameLength = 100;
 #endif
 
+// Standard string lengths, to avoid having too many different instantiations of the String<n> template
 constexpr size_t StringLength20 = 20;
 constexpr size_t StringLength50 = 50;					// Used for pin names
 constexpr size_t StringLength100 = 100;					// Used for error messages
@@ -253,7 +254,11 @@ constexpr size_t RESERVED_OUTPUT_BUFFERS = 2;           // Number of reserved ou
 # error
 #endif
 
-const size_t maxQueuedCodes = 16;						// How many codes can be queued?
+constexpr size_t maxQueuedCodes = 16;					// How many codes can be queued?
+
+// These two definitions are only used if TRACK_OBJECT_NAMES is defined, however that definition isn't available in this file
+constexpr size_t MaxTrackedObjects = 10;				// How many build plate objects we track. Each one needs 24 bytes of storage, in addition to the string space.
+constexpr size_t ObjectNamesStringSpace = 200;			// How much space we reserve for the names of objects on the build plate
 
 // Move system
 constexpr float DefaultFeedRate = 3000.0;				// The initial requested feed rate after resetting the printer, in mm/min
@@ -325,6 +330,7 @@ constexpr size_t FILE_BUFFER_SIZE = 128;
 #define MACRO_DIR "0:/macros/"						// Ditto - Macro files
 #define SCANS_DIRECTORY "0:/scans/"					// Directory for uploaded 3D scans
 #define FILAMENTS_DIRECTORY "0:/filaments/"			// Directory for filament configurations
+#define FIRMWARE_DIRECTORY "0:/sys/"				// Directory for firmware and IAP files
 #define MENU_DIR "0:/menu/"							// Directory for menu files
 #define UPLOAD_EXTENSION ".part"					// Extension to a filename for a file being uploaded
 

@@ -140,9 +140,9 @@ public:
 	uint16_t GetExtrudersInUse() const noexcept;
 	uint16_t GetToolHeatersInUse() const noexcept;
 
-	OutputBuffer *GetStatusResponse(uint8_t type, ResponseSource source) noexcept;
+	OutputBuffer *GetStatusResponse(uint8_t type, ResponseSource source) const noexcept;
 	OutputBuffer *GetConfigResponse() noexcept;
-	OutputBuffer *GetLegacyStatusResponse(uint8_t type, int seq) noexcept;
+	OutputBuffer *GetLegacyStatusResponse(uint8_t type, int seq) const noexcept;
 
 #if HAS_MASS_STORAGE
 	OutputBuffer *GetFilesResponse(const char* dir, unsigned int startAt, bool flagsDirs) noexcept;
@@ -274,8 +274,11 @@ private:
 	String<MachineNameLength> myName;
 
 	unsigned int beepFrequency, beepDuration;
+	uint32_t beepTimer;
 	String<MaxMessageLength> message;
-	uint16_t messageSequence;					// TODO replace this with seqs.state
+#if SUPPORT_12864_LCD
+	uint16_t messageSequence;					// used by 12864 display to detect when there is a new message
+#endif
 
 	MessageBox mbox;							// message box data
 

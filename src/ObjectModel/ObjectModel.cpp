@@ -313,7 +313,7 @@ void ObjectModel::ReportAsJson(OutputBuffer* buf, ObjectExplorationContext& cont
 		}
 		if (!added)
 		{
-			buf->cat("null");
+			buf->cat((*filter == 0) ? "{}" : "null");
 		}
 		context.DecreaseDepth();
 	}
@@ -421,7 +421,11 @@ void ObjectModel::ReportItemAsJson(OutputBuffer *buf, ObjectExplorationContext& 
 		case TypeCode::Float:
 			if (val.fVal == 0.0)
 			{
-				buf->cat('0');				// replace 0.000... in JSON by 0. This is mostly to save space when writing workplace coordinates.
+				buf->cat('0');							// replace 0.000... in JSON by 0. This is mostly to save space when writing workplace coordinates.
+			}
+			else if (isnan(val.fVal) || isinf(val.fVal))
+			{
+				buf->cat("null");						// avoid generating bad JSON if the value is a NaN or infinity
 			}
 			else
 			{

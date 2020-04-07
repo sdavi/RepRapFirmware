@@ -115,7 +115,7 @@ constexpr ObjectModelTableEntry Move::objectModelTable[] =
 	{ "mean",					OBJECT_MODEL_FUNC(self->latestCalibrationDeviation.GetMean(), 3),						ObjectModelEntryFlags::none },
 
 	// 7. move.compensation members
-	{ "fadeHeight",				OBJECT_MODEL_FUNC(self->taperHeight, 1),												ObjectModelEntryFlags::none },
+	{ "fadeHeight",				OBJECT_MODEL_FUNC((self->useTaper) ? self->taperHeight : std::numeric_limits<float>::quiet_NaN(), 1),	ObjectModelEntryFlags::none },
 #if HAS_MASS_STORAGE
 	{ "file",					OBJECT_MODEL_FUNC_IF(
 									self->usingMesh
@@ -367,7 +367,7 @@ bool Move::IsRawMotorMove(uint8_t moveType) const noexcept
 // Return true if the specified point is accessible to the Z probe
 bool Move::IsAccessibleProbePoint(float x, float y) const noexcept
 {
-	const auto zp = reprap.GetPlatform().GetCurrentZProbe();
+	const auto zp = reprap.GetPlatform().GetEndstops().GetZProbe(reprap.GetGCodes().GetCurrentZProbeNumber());
 	if (zp.IsNotNull())
 	{
 		x -= zp->GetXOffset();
@@ -896,7 +896,7 @@ float Move::GetProbeCoordinates(int count, float& x, float& y, bool wantNozzlePo
 	y = probePoints.GetYCoord(count);
 	if (wantNozzlePosition)
 	{
-		const auto zp = reprap.GetPlatform().GetCurrentZProbe();
+		const auto zp = reprap.GetPlatform().GetEndstops().GetZProbe(reprap.GetGCodes().GetCurrentZProbeNumber());
 		if (zp.IsNotNull())
 		{
 			x -= zp->GetXOffset();
