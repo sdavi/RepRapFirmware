@@ -51,16 +51,17 @@ constexpr ObjectModelTableEntry PrintMonitor::objectModelTable[] =
 #if TRACK_OBJECT_NAMES
 	{ "build",				OBJECT_MODEL_FUNC_IF(self->IsPrinting(), reprap.GetGCodes().GetBuildObjects(), 0), 									ObjectModelEntryFlags::live },
 #endif
-	{ "duration",			OBJECT_MODEL_FUNC_IF(self->IsPrinting(), self->GetPrintDuration(), 1), 												ObjectModelEntryFlags::live },
+	{ "duration",			OBJECT_MODEL_FUNC_IF(self->IsPrinting(), self->GetPrintOrSimulatedDuration()), 										ObjectModelEntryFlags::live },
 	{ "file",				OBJECT_MODEL_FUNC(self, 1),							 																ObjectModelEntryFlags::none },
-	{ "filePosition",		OBJECT_MODEL_FUNC_NOSELF(reprap.GetGCodes().GetFilePosition(), 0),													ObjectModelEntryFlags::live },
-	{ "firstLayerDuration", OBJECT_MODEL_FUNC_IF(self->IsPrinting(), self->GetFirstLayerDuration()), 											ObjectModelEntryFlags::none },
+	{ "filePosition",		OBJECT_MODEL_FUNC_NOSELF((uint64_t)reprap.GetGCodes().GetFilePosition()),											ObjectModelEntryFlags::live },
+	{ "firstLayerDuration", OBJECT_MODEL_FUNC_IF(self->IsPrinting(), lrintf(self->GetFirstLayerDuration())), 									ObjectModelEntryFlags::none },
+	{ "lastDuration",		OBJECT_MODEL_FUNC_IF(!self->IsPrinting(), (int32_t)reprap.GetGCodes().GetLastDuration()), 							ObjectModelEntryFlags::none },
 	{ "lastFileName",		OBJECT_MODEL_FUNC_IF(!self->filenameBeingPrinted.IsEmpty(), self->filenameBeingPrinted.c_str()), 					ObjectModelEntryFlags::none },
 	// TODO Add enum about the last file print here (to replace lastFileAborted, lastFileCancelled, lastFileSimulated)
 	{ "layer",				OBJECT_MODEL_FUNC_IF(self->IsPrinting(), (int32_t)self->currentLayer), 												ObjectModelEntryFlags::none },
-	{ "layerTime",			OBJECT_MODEL_FUNC_IF(self->IsPrinting(), self->GetCurrentLayerTime(), 1), 											ObjectModelEntryFlags::live },
+	{ "layerTime",			OBJECT_MODEL_FUNC_IF(self->IsPrinting(), lrintf(self->GetCurrentLayerTime())), 										ObjectModelEntryFlags::live },
 	{ "timesLeft",			OBJECT_MODEL_FUNC(self, 2),							 																ObjectModelEntryFlags::live },
-	{ "warmUpDuration",		OBJECT_MODEL_FUNC_IF(self->IsPrinting(), self->GetWarmUpDuration(), 1),												ObjectModelEntryFlags::none },
+	{ "warmUpDuration",		OBJECT_MODEL_FUNC_IF(self->IsPrinting(), lrintf(self->GetWarmUpDuration())),										ObjectModelEntryFlags::none },
 
 	// 1. ParsedFileInfo members
 	{ "filament",			OBJECT_MODEL_FUNC_NOSELF(&filamentArrayDescriptor),							 										ObjectModelEntryFlags::none },
@@ -73,7 +74,7 @@ constexpr ObjectModelTableEntry PrintMonitor::objectModelTable[] =
 	{ "numLayers",			OBJECT_MODEL_FUNC((int32_t)self->printingFileInfo.GetNumLayers()), 													ObjectModelEntryFlags::none },
 	{ "printTime",			OBJECT_MODEL_FUNC_IF(self->printingFileInfo.printTime != 0, (int32_t)self->printingFileInfo.printTime), 			ObjectModelEntryFlags::none },
 	{ "simulatedTime",		OBJECT_MODEL_FUNC_IF(self->printingFileInfo.simulatedTime != 0, (int32_t)self->printingFileInfo.simulatedTime), 	ObjectModelEntryFlags::none },
-	{ "size",				OBJECT_MODEL_FUNC((int32_t)self->printingFileInfo.fileSize),	/* note, using int32_t limits us to 2Gb */			ObjectModelEntryFlags::none },
+	{ "size",				OBJECT_MODEL_FUNC((uint64_t)self->printingFileInfo.fileSize),														ObjectModelEntryFlags::none },
 
 	// 2. TimesLeft members
 	{ "filament",			OBJECT_MODEL_FUNC(self->EstimateTimeLeftAsExpression(filamentBased)),												ObjectModelEntryFlags::live },
@@ -81,9 +82,14 @@ constexpr ObjectModelTableEntry PrintMonitor::objectModelTable[] =
 	{ "layer",				OBJECT_MODEL_FUNC(self->EstimateTimeLeftAsExpression(layerBased)),													ObjectModelEntryFlags::live },
 };
 
-constexpr uint8_t PrintMonitor::objectModelTableDescriptor[] = { 3, 9 + TRACK_OBJECT_NAMES, 11, 3 };
+constexpr uint8_t PrintMonitor::objectModelTableDescriptor[] = { 3, 10 + TRACK_OBJECT_NAMES, 11, 3 };
 
 DEFINE_GET_OBJECT_MODEL_TABLE(PrintMonitor)
+
+int32_t PrintMonitor::GetPrintOrSimulatedDuration() const noexcept
+{
+	return lrintf((reprap.GetGCodes().IsSimulating()) ? reprap.GetGCodes().GetSimulationTime() + reprap.GetMove().GetSimulationTime() : GetPrintDuration());
+}
 
 #endif
 

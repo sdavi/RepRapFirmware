@@ -105,12 +105,31 @@ void LinuxInterface::Spin()
 				StringRef flagsRef = flags.GetRef();
 				transfer->ReadGetObjectModel(packet->length, keyRef, flagsRef);
 
-				OutputBuffer *outBuf = reprap.GetModelResponse(key.c_str(), flags.c_str());
-				if (outBuf != nullptr && !transfer->WriteObjectModel(outBuf))
+				try
 				{
-					// Failed to write the whole object model, try again later
-					packetAcknowledged = false;
-					OutputBuffer::ReleaseAll(outBuf);
+					OutputBuffer *outBuf = reprap.GetModelResponse(key.c_str(), flags.c_str());
+					if (outBuf == nullptr || !transfer->WriteObjectModel(outBuf))
+					{
+						// Failed to write the whole object model, try again later
+						packetAcknowledged = false;
+						OutputBuffer::ReleaseAll(outBuf);
+					}
+				}
+				catch (GCodeException& e)
+				{
+					// Get the error message and send it back to DSF
+					OutputBuffer *buf;
+					if (OutputBuffer::Allocate(buf))
+					{
+						String<StringLength100> errorMessage;
+						e.GetMessage(errorMessage.GetRef(), nullptr);
+						buf->cat(errorMessage.c_str());
+						packetAcknowledged = transfer->WriteObjectModel(buf);
+					}
+					else
+					{
+						packetAcknowledged = false;
+					}
 				}
 				break;
 			}
@@ -263,6 +282,7 @@ void LinuxInterface::Spin()
 					{
 						filament->Load(filamentName.c_str());
 					}
+					reprap.MoveUpdated();
 				}
 				break;
 			}
@@ -373,57 +393,56 @@ void LinuxInterface::Spin()
 			const GCodeChannel channel(i);
 			GCodeBuffer * const gb = reprap.GetGCodes().GetGCodeBuffer(channel);
 
-            if(gb != nullptr)
-            {
+#if defined(__LPC17xx__)
+          if(gb != nullptr)
+          {
+#endif
+			// Invalidate buffered codes if required
+			if (gb->IsInvalidated())
+			{
+				InvalidateBufferChannel(gb->GetChannel());
+				gb->Invalidate(false);
+			}
 
-            
-                // Invalidate buffered codes if required
-                if (gb->IsInvalidated())
-                {
-                    InvalidateBufferChannel(gb->GetChannel());
-                    gb->Invalidate(false);
-                }
+			// Handle macro start requests
+			const char * const requestedMacroFile = gb->GetRequestedMacroFile(reportMissing, fromCode);
+			if (requestedMacroFile != nullptr &&
+				transfer->WriteMacroRequest(channel, requestedMacroFile, reportMissing, fromCode))
+			{
+				if (reprap.Debug(moduleLinuxInterface))
+				{
+					reprap.GetPlatform().MessageF(DebugMessage, "Requesting macro file '%s' (reportMissing: %s fromCode: %s)\n", requestedMacroFile, reportMissing ? "true" : "false", fromCode ? "true" : "false");
+				}
+				gb->RequestMacroFile(nullptr, reportMissing, fromCode);
+				gb->Invalidate();
+			}
 
-                // Handle macro start requests
-                const char * const requestedMacroFile = gb->GetRequestedMacroFile(reportMissing, fromCode);
-                if (requestedMacroFile != nullptr)
-                {
-                    if (transfer->WriteMacroRequest(channel, requestedMacroFile, reportMissing, fromCode))
-                    {
-                        if (reprap.Debug(moduleLinuxInterface))
-                        {
-                            reprap.GetPlatform().MessageF(DebugMessage, "Requesting macro file '%s' (reportMissing: %s fromCode: %s)\n", requestedMacroFile, reportMissing ? "true" : "false", fromCode ? "true" : "false");
-                        }
-                        gb->RequestMacroFile(nullptr, reportMissing, fromCode);
-                    }
-                    gb->Invalidate();
-                }
+			// Handle file abort requests
+			if (gb->IsAbortRequested() && transfer->WriteAbortFileRequest(channel, gb->IsAbortAllRequested()))
+			{
+				gb->AcknowledgeAbort();
+				gb->Invalidate();
+			}
 
-                // Handle file abort requests
-                if (gb->IsAbortRequested())
-                {
-                    if (transfer->WriteAbortFileRequest(channel, gb->IsAbortAllRequested()))
-                    {
-                        gb->AcknowledgeAbort();
-                    }
-                    gb->Invalidate();
-                }
+			// Handle blocking messages
+			if (gb->MachineState().waitingForAcknowledgement && !gb->MachineState().waitingForAcknowledgementSent &&
+				transfer->WriteWaitForAcknowledgement(channel))
+			{
+				gb->MachineState().waitingForAcknowledgementSent = true;
+				gb->Invalidate();
+			}
 
-                // Handle blocking messages
-                if (gb->MachineState().waitingForAcknowledgement && !gb->MachineState().waitingForAcknowledgementSent)
-                {
-                    if (transfer->WriteWaitForAcknowledgement(channel))
-                    {
-                        gb->MachineState().waitingForAcknowledgementSent = true;
-                    }
-                    gb->Invalidate();
-                }
+			// Send pending firmware codes
+			if (gb->IsSendRequested() && transfer->WriteDoCode(channel, gb->DataStart(), gb->DataLength()))
+			{
+				gb->SetFinished(true);
+			}
+#if defined(__LPC17xx__)
+          }
+#endif
 
-                // TODO add new flags to the GBs to indicate if a string code is supposed to be sent to DSF (like above)
-                // and call transfer->WriteDoCode(GCodeChannel, const char *) with the GB content
-            }
-            
-        }
+              
+		}
 
 		// Send pause notification on demand
 		if (reportPause && transfer->WritePrintPaused(pauseFilePosition, pauseReason))

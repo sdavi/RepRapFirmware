@@ -2366,7 +2366,7 @@ void RepRap::AppendStringArray(OutputBuffer *buf, const char *name, size_t numVa
 #if SUPPORT_OBJECT_MODEL
 
 // Return a query into the object model, or return nullptr if no buffer available
-OutputBuffer *RepRap::GetModelResponse(const char *key, const char *flags)
+OutputBuffer *RepRap::GetModelResponse(const char *key, const char *flags) const
 {
 	OutputBuffer *outBuf;
 	if (OutputBuffer::Allocate(outBuf))
@@ -2539,11 +2539,11 @@ const char *RepRap::GetName() const noexcept
 
 void RepRap::SetName(const char* nm) noexcept
 {
-	// Users sometimes put a tab character between the machine name and the comment, so allow for this
 	myName.copy(nm);
 
 	// Set new DHCP hostname
 	network->SetHostname(myName.c_str());
+	NetworkUpdated();
 }
 
 // Given that we want to extrude/retract the specified extruder drives, check if they are allowed.
