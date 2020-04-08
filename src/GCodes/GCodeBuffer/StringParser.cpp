@@ -304,7 +304,7 @@ bool StringParser::LineFinished()
 
 // Check whether the current command is a meta command, or we are skipping commands in a block
 // Return true if the current line no longer needs to be processed
-bool StringParser::CheckMetaCommand(const StringRef& reply)
+bool StringParser::CheckMetaCommand(const StringRef& reply) THROWS(GCodeException)
 {
 	if (overflowed)
 	{
@@ -921,7 +921,7 @@ bool StringParser::Seen(char c) noexcept
 }
 
 // Get a float after a G Code letter found by a call to Seen()
-float StringParser::GetFValue()
+float StringParser::GetFValue() THROWS(GCodeException)
 {
 	if (readPointer <= 0)
 	{
@@ -935,7 +935,7 @@ float StringParser::GetFValue()
 
 // Get a colon-separated list of floats after a key letter
 // If doPad is true then we allow just one element to be given, in which case we fill all elements with that value
-void StringParser::GetFloatArray(float arr[], size_t& returnedLength, bool doPad)
+void StringParser::GetFloatArray(float arr[], size_t& returnedLength, bool doPad) THROWS(GCodeException)
 {
 	if (readPointer <= 0)
 	{
@@ -974,7 +974,7 @@ void StringParser::GetFloatArray(float arr[], size_t& returnedLength, bool doPad
 }
 
 // Get a :-separated list of ints after a key letter
-void StringParser::GetIntArray(int32_t arr[], size_t& returnedLength, bool doPad)
+void StringParser::GetIntArray(int32_t arr[], size_t& returnedLength, bool doPad) THROWS(GCodeException)
 {
 	if (readPointer <= 0)
 	{
@@ -1013,7 +1013,7 @@ void StringParser::GetIntArray(int32_t arr[], size_t& returnedLength, bool doPad
 }
 
 // Get a :-separated list of unsigned ints after a key letter
-void StringParser::GetUnsignedArray(uint32_t arr[], size_t& returnedLength, bool doPad)
+void StringParser::GetUnsignedArray(uint32_t arr[], size_t& returnedLength, bool doPad) THROWS(GCodeException)
 {
 	if (readPointer <= 0)
 	{
@@ -1053,7 +1053,7 @@ void StringParser::GetUnsignedArray(uint32_t arr[], size_t& returnedLength, bool
 }
 
 // Get a :-separated list of drivers after a key letter
-void StringParser::GetDriverIdArray(DriverId arr[], size_t& returnedLength)
+void StringParser::GetDriverIdArray(DriverId arr[], size_t& returnedLength) THROWS(GCodeException)
 {
 	if (readPointer <= 0)
 	{
@@ -1081,7 +1081,7 @@ void StringParser::GetDriverIdArray(DriverId arr[], size_t& returnedLength)
 }
 
 // Get and copy a quoted string returning true if successful
-void StringParser::GetQuotedString(const StringRef& str, bool allowEmpty)
+void StringParser::GetQuotedString(const StringRef& str, bool allowEmpty) THROWS(GCodeException)
 {
 	if (readPointer <= 0)
 	{
@@ -1115,7 +1115,7 @@ void StringParser::GetQuotedString(const StringRef& str, bool allowEmpty)
 }
 
 // Given that the current character is double-quote, fetch the quoted string
-void StringParser::InternalGetQuotedString(const StringRef& str)
+void StringParser::InternalGetQuotedString(const StringRef& str) THROWS(GCodeException)
 {
 	str.Clear();
 	++readPointer;
@@ -1155,7 +1155,7 @@ void StringParser::InternalGetQuotedString(const StringRef& str)
 }
 
 // Get and copy a string which may or may not be quoted. If it is not quoted, it ends at the first space or control character.
-void StringParser::GetPossiblyQuotedString(const StringRef& str, bool allowEmpty)
+void StringParser::GetPossiblyQuotedString(const StringRef& str, bool allowEmpty) THROWS(GCodeException)
 {
 	if (readPointer <= 0)
 	{
@@ -1170,7 +1170,7 @@ void StringParser::GetPossiblyQuotedString(const StringRef& str, bool allowEmpty
 }
 
 // Get and copy a string which may or may not be quoted, starting at readPointer. Return true if successful.
-void StringParser::InternalGetPossiblyQuotedString(const StringRef& str)
+void StringParser::InternalGetPossiblyQuotedString(const StringRef& str) THROWS(GCodeException)
 {
 	str.Clear();
 	if (gb.buffer[readPointer] == '"')
@@ -1200,7 +1200,7 @@ void StringParser::InternalGetPossiblyQuotedString(const StringRef& str)
 	}
 }
 
-void StringParser::GetReducedString(const StringRef& str)
+void StringParser::GetReducedString(const StringRef& str) THROWS(GCodeException)
 {
 	if (readPointer <= 0)
 	{
@@ -1253,7 +1253,7 @@ void StringParser::GetReducedString(const StringRef& str)
 // command that sets the name of a file to be printed.  In
 // preference use GetString() which requires the string to have
 // been preceded by a tag letter.
-void StringParser::GetUnprecedentedString(const StringRef& str, bool allowEmpty)
+void StringParser::GetUnprecedentedString(const StringRef& str, bool allowEmpty) THROWS(GCodeException)
 {
 	readPointer = parameterStart;
 	char c;
@@ -1276,7 +1276,7 @@ const char *StringParser::GetCompleteParameters() const noexcept
 }
 
 // Get an int32 after a G Code letter
-int32_t StringParser::GetIValue()
+int32_t StringParser::GetIValue() THROWS(GCodeException)
 {
 	if (readPointer <= 0)
 	{
@@ -1289,7 +1289,7 @@ int32_t StringParser::GetIValue()
 }
 
 // Get an uint32 after a G Code letter
-uint32_t StringParser::GetUIValue()
+uint32_t StringParser::GetUIValue() THROWS(GCodeException)
 {
 	if (readPointer <= 0)
 	{
@@ -1302,7 +1302,7 @@ uint32_t StringParser::GetUIValue()
 }
 
 // Get a driver ID
-DriverId StringParser::GetDriverId()
+DriverId StringParser::GetDriverId() THROWS(GCodeException)
 {
 	if (readPointer <= 0)
 	{
@@ -1315,7 +1315,7 @@ DriverId StringParser::GetDriverId()
 }
 
 // Get an IP address quad after a key letter
-void StringParser::GetIPAddress(IPAddress& returnedIp)
+void StringParser::GetIPAddress(IPAddress& returnedIp) THROWS(GCodeException)
 {
 	if (readPointer <= 0)
 	{
@@ -1357,7 +1357,7 @@ void StringParser::GetIPAddress(IPAddress& returnedIp)
 }
 
 // Get a MAC address sextet after a key letter
-void StringParser::GetMacAddress(MacAddress& mac)
+void StringParser::GetMacAddress(MacAddress& mac) THROWS(GCodeException)
 {
 	if (readPointer <= 0)
 	{
@@ -1573,7 +1573,7 @@ bool StringParser::FileEnded() noexcept
 #endif
 
 // Functions to read values from lines of GCode, allowing for expressions and variable substitution
-float StringParser::ReadFloatValue()
+float StringParser::ReadFloatValue() THROWS(GCodeException)
 {
 	if (gb.buffer[readPointer] == '{')
 	{
@@ -1589,7 +1589,7 @@ float StringParser::ReadFloatValue()
 	return rslt;
 }
 
-uint32_t StringParser::ReadUIValue()
+uint32_t StringParser::ReadUIValue() THROWS(GCodeException)
 {
 	if (gb.buffer[readPointer] == '{')
 	{
@@ -1634,7 +1634,7 @@ uint32_t StringParser::ReadUIValue()
 	return rslt;
 }
 
-int32_t StringParser::ReadIValue()
+int32_t StringParser::ReadIValue() THROWS(GCodeException)
 {
 	if (gb.buffer[readPointer] == '{')
 	{
@@ -1650,7 +1650,7 @@ int32_t StringParser::ReadIValue()
 	return rslt;
 }
 
-DriverId StringParser::ReadDriverIdValue()
+DriverId StringParser::ReadDriverIdValue() THROWS(GCodeException)
 {
 	DriverId result;
 	const uint32_t v1 = ReadUIValue();
