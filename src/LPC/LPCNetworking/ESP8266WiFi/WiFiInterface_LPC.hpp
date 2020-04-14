@@ -12,7 +12,7 @@ void spi_disable(SSPChannel sspChannel) noexcept
     spi_dma_disable();
 }
 
-static inline void flush_rx_fifo()
+static inline void flush_rx_fifo() noexcept
 {
     while(LPC_SSP0->SR & (1UL << 2))
     {
@@ -20,39 +20,39 @@ static inline void flush_rx_fifo()
     }
 }
 
-static inline void spi_rx_dma_enable()
+static inline void spi_rx_dma_enable() noexcept
 {
     LPC_SSP0->DMACR |= SSP_DMA_RX;//enable RX DMA
 }
 
-static inline void spi_tx_dma_enable()
+static inline void spi_tx_dma_enable() noexcept
 {
     LPC_SSP0->DMACR |= SSP_DMA_TX;//enable TX DMA
 }
 
-static inline void spi_rx_dma_disable()
+static inline void spi_rx_dma_disable() noexcept
 {
     LPC_SSP0->DMACR &= ~SSP_DMA_RX;
 }
 
-static inline void spi_tx_dma_disable()
+static inline void spi_tx_dma_disable() noexcept
 {
     LPC_SSP0->DMACR &= ~SSP_DMA_TX;
 }
 
-static inline void spi_dma_disable()
+static inline void spi_dma_disable() noexcept
 {
 	spi_tx_dma_disable();
 	spi_rx_dma_disable();
 }
 
-static inline void spi_dma_enable()
+static inline void spi_dma_enable() noexcept
 {
     spi_rx_dma_enable();
     spi_tx_dma_enable();
 }
 
-static bool spi_dma_check_rx_complete()
+static bool spi_dma_check_rx_complete() noexcept
 {
     //DMA Interrupt will notifiy when transfer is complete, just return true here
     return true;
