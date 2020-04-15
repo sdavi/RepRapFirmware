@@ -41,7 +41,7 @@
 #include "Wire.h"
 
 // Deal with G60
-GCodeResult GCodes::SavePosition(GCodeBuffer& gb, const StringRef& reply) noexcept
+GCodeResult GCodes::SavePosition(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException)
 {
 	const uint32_t sParam = (gb.Seen('S')) ? gb.GetUIValue() : 0;
 	if (sParam < ARRAY_SIZE(numberedRestorePoints))
@@ -56,7 +56,7 @@ GCodeResult GCodes::SavePosition(GCodeBuffer& gb, const StringRef& reply) noexce
 }
 
 // This handles G92. Return true if completed, false if it needs to be called again.
-GCodeResult GCodes::SetPositions(GCodeBuffer& gb)
+GCodeResult GCodes::SetPositions(GCodeBuffer& gb) THROWS(GCodeException)
 {
 	// Don't wait for the machine to stop if only extruder drives are being reset.
 	// This avoids blobs and seams when the gcode uses absolute E coordinates and periodically includes G92 E0.
@@ -401,7 +401,13 @@ GCodeResult GCodes::SimulateFile(GCodeBuffer& gb, const StringRef &reply, const 
 		simulationMode = 1;
 		reprap.GetMove().Simulate(simulationMode);
 		reprap.GetPrintMonitor().StartingPrint(file.c_str());
-		StartPrinting(true);
+#if HAS_LINUX_INTERFACE
+		if (!reprap.UsingLinuxInterface())
+#endif
+		{
+			// If using a SBC, this is already called when the print file info is set
+			StartPrinting(true);
+		}
 		reply.printf("Simulating print of file %s", file.c_str());
 		return GCodeResult::ok;
 	}
@@ -513,7 +519,7 @@ GCodeResult GCodes::CheckTrigger(GCodeBuffer& gb, const StringRef& reply)
 }
 
 // Deal with a M584
-GCodeResult GCodes::DoDriveMapping(GCodeBuffer& gb, const StringRef& reply) noexcept
+GCodeResult GCodes::DoDriveMapping(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException)
 {
 	if (!LockMovementAndWaitForStandstill(gb))				// we also rely on this to retrieve the current motor positions to moveBuffer
 	{
@@ -636,7 +642,7 @@ GCodeResult GCodes::DoDriveMapping(GCodeBuffer& gb, const StringRef& reply) noex
 	return GCodeResult::ok;
 }
 // Handle G38.[2-5]
-GCodeResult GCodes::StraightProbe(GCodeBuffer& gb, const StringRef& reply)
+GCodeResult GCodes::StraightProbe(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException)
 {
 	const int8_t fraction = gb.GetCommandFraction();
 	if (fraction < 2 || fraction > 5) {
@@ -734,7 +740,7 @@ GCodeResult GCodes::StraightProbe(GCodeBuffer& gb, const StringRef& reply)
 }
 
 // Deal with a M585
-GCodeResult GCodes::ProbeTool(GCodeBuffer& gb, const StringRef& reply)
+GCodeResult GCodes::ProbeTool(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException)
 {
 	if (reprap.GetCurrentTool() == nullptr)
 	{
@@ -813,7 +819,7 @@ GCodeResult GCodes::ProbeTool(GCodeBuffer& gb, const StringRef& reply)
 	return GCodeResult::ok;
 }
 
-GCodeResult GCodes::FindCenterOfCavity(GCodeBuffer& gb, const StringRef& reply, const bool towardsMin)
+GCodeResult GCodes::FindCenterOfCavity(GCodeBuffer& gb, const StringRef& reply, const bool towardsMin) THROWS(GCodeException)
 {
 	if (reprap.GetCurrentTool() == nullptr)
 	{
@@ -887,7 +893,7 @@ GCodeResult GCodes::FindCenterOfCavity(GCodeBuffer& gb, const StringRef& reply, 
 }
 
 // Deal with a M905
-GCodeResult GCodes::SetDateTime(GCodeBuffer& gb, const StringRef& reply) noexcept
+GCodeResult GCodes::SetDateTime(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException)
 {
 	tm timeInfo;
 	(void)platform.GetDateTime(timeInfo);
@@ -1133,7 +1139,7 @@ GCodeResult GCodes::ReceiveI2c(GCodeBuffer& gb, const StringRef &reply)
 }
 
 // Deal with M569
-GCodeResult GCodes::ConfigureDriver(GCodeBuffer& gb, const StringRef& reply) noexcept
+GCodeResult GCodes::ConfigureDriver(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException)
 {
 	gb.MustSee('P');
 	const DriverId id = gb.GetDriverId();

@@ -344,14 +344,22 @@ bool GCodes::IsDaemonBusy() const noexcept
 	return triggerGCode->IsDoingFile();
 }
 
-// Copy the feed rate etc. from the daemon to the input channels
-void GCodes::CopyConfigFinalValues(GCodeBuffer& gb) noexcept
+// Copy the feed rate etc. from the channel that was running config.g to the input channels
+void GCodes::CheckFinishedRunningConfigFile(GCodeBuffer& gb) noexcept
 {
-	for (GCodeBuffer *gb2 : gcodeSources)
+	if (runningConfigFile)
 	{
-		if (gb2 != nullptr)
+		gb.MachineState().GetPrevious()->CopyStateFrom(gb.MachineState());	// so that M83 etc. in  nested file don't get forgotten
+		if (gb.MachineState().GetPrevious()->GetPrevious() == nullptr)
 		{
-			gb2->MachineState().CopyStateFrom(gb.MachineState());
+			for (GCodeBuffer *gb2 : gcodeSources)
+			{
+				if (gb2 != nullptr && gb2 != &gb)
+				{
+					gb2->MachineState().CopyStateFrom(gb.MachineState());
+				}
+			}
+			runningConfigFile = false;
 		}
 	}
 }
@@ -417,7 +425,7 @@ void GCodes::Spin() noexcept
 
 			if (wasCancelled)
 			{
-				if (gb.MachineState().previous == nullptr)
+				if (gb.MachineState().GetPrevious() == nullptr)
 				{
 					StopPrint(StopPrintReason::userCancelled);
 				}
@@ -469,14 +477,14 @@ void GCodes::StartNextGCode(GCodeBuffer& gb, const StringRef& reply) noexcept
 		catch (GCodeException& e)
 		{
 			e.GetMessage(reply, &gb);
-			HandleReply(gb, GCodeResult::error, reply.c_str());
+			HandleReplyPreserveResult(gb, GCodeResult::error, reply.c_str());
 			gb.Init();
 			return;
 		}
 
 		if (done)
 		{
-			HandleReply(gb, GCodeResult::ok, reply.c_str());
+			HandleReplyPreserveResult(gb, GCodeResult::ok, reply.c_str());
 		}
 		else
 		{
@@ -535,7 +543,7 @@ void GCodes::DoFilePrint(GCodeBuffer& gb, const StringRef& reply) noexcept
 		{
 			gb.Init();								// mark buffer as empty
 
-			if (gb.MachineState().previous == nullptr)
+			if (gb.MachineState().GetPrevious() == nullptr)
 			{
 				// Finished printing SD card file.
 				// We never get here if the file ends in M0 because CancelPrint gets called directly in that case.
@@ -552,13 +560,8 @@ void GCodes::DoFilePrint(GCodeBuffer& gb, const StringRef& reply) noexcept
 			{
 				// Finished a macro or finished processing config.g
 				gb.MachineState().CloseFile();
-				if (runningConfigFile && gb.MachineState().previous->previous == nullptr)
-				{
-					CopyConfigFinalValues(gb);
-					runningConfigFile = false;
-				}
-
-				const bool hadFileError = gb.MachineState().fileError;
+				CheckFinishedRunningConfigFile(gb);
+				const bool hadFileError = gb.MachineState().fileError, wasBinary = gb.IsBinary();
 				Pop(gb, false);
 				gb.Init();
 				if (gb.GetState() == GCodeState::doingUnsupportedCode)
@@ -583,11 +586,8 @@ void GCodes::DoFilePrint(GCodeBuffer& gb, const StringRef& reply) noexcept
 					// Output a warning message on demand
 					if (hadFileError)
 					{
-						(void)gb.Seen('P');
-						String<MaxFilenameLength + 32> reply;
-						gb.GetPossiblyQuotedString(reply.GetRef());
-						reply.Prepend("Macro file ");
-						reply.cat(" not found");
+						bool reportMissing, fromCode;
+						reply.printf("Macro file %s not found", gb.GetRequestedMacroFile(reportMissing, fromCode));
 						HandleReply(gb, GCodeResult::warning, reply.c_str());
 					}
 					else
@@ -605,6 +605,13 @@ void GCodes::DoFilePrint(GCodeBuffer& gb, const StringRef& reply) noexcept
 				{
 					UnlockAll(gb);
 					HandleReply(gb, GCodeResult::ok, "");
+				}
+
+				// Need to send a final empty response to the SBC if the request came from a code so it can pop its stack
+				if (!wasBinary)
+				{
+					MessageType type = (MessageType)((1u << gb.GetChannel().ToBaseType()) | BinaryCodeReplyFlag);
+					platform.Message(type, "");
 				}
 			}
 		}
@@ -643,7 +650,7 @@ void GCodes::DoFilePrint(GCodeBuffer& gb, const StringRef& reply) noexcept
 				catch (GCodeException& e)
 				{
 					e.GetMessage(reply, &gb);
-					HandleReply(gb, GCodeResult::error, reply.c_str());
+					HandleReplyPreserveResult(gb, GCodeResult::error, reply.c_str());
 					gb.Init();
 					AbortPrint(gb);
 					break;
@@ -651,7 +658,7 @@ void GCodes::DoFilePrint(GCodeBuffer& gb, const StringRef& reply) noexcept
 
 				if (done)
 				{
-					HandleReply(gb, GCodeResult::ok, reply.c_str());
+					HandleReplyPreserveResult(gb, GCodeResult::ok, reply.c_str());
 				}
 				else
 				{
@@ -702,7 +709,7 @@ void GCodes::DoFilePrint(GCodeBuffer& gb, const StringRef& reply) noexcept
 			}
 			gb.Init();								// mark buffer as empty
 
-			if (gb.MachineState().previous == nullptr)
+			if (gb.MachineState().GetPrevious() == nullptr)
 			{
 				// Finished printing SD card file.
 				// We never get here if the file ends in M0 because CancelPrint gets called directly in that case.
@@ -720,11 +727,7 @@ void GCodes::DoFilePrint(GCodeBuffer& gb, const StringRef& reply) noexcept
 				// Finished a macro or finished processing config.g
 				gb.GetFileInput()->Reset(fd);
 				fd.Close();
-				if (runningConfigFile && gb.MachineState().previous->previous == nullptr)
-				{
-					CopyConfigFinalValues(gb);
-					runningConfigFile = false;
-				}
+				CheckFinishedRunningConfigFile(gb);
 				Pop(gb, false);
 				gb.Init();
 				if (gb.GetState() == GCodeState::normal)
@@ -1006,40 +1009,12 @@ bool GCodes::IsPaused() const noexcept
 
 bool GCodes::IsPausing() const noexcept
 {
-	GCodeState topState = fileGCode->OriginalMachineState().state;
-	if (   topState == GCodeState::pausing1 || topState == GCodeState::pausing2
-		|| topState == GCodeState::filamentChangePause1 || topState == GCodeState::filamentChangePause2
-	   )
-	{
-		return true;
-	}
-
-	topState = triggerGCode->OriginalMachineState().state;
-	if (   topState == GCodeState::pausing1 || topState == GCodeState::pausing2
-		|| topState == GCodeState::filamentChangePause1 || topState == GCodeState::filamentChangePause2
-	   )
-	{
-		return true;
-	}
-
-	topState = autoPauseGCode->OriginalMachineState().state;
-	if (   topState == GCodeState::pausing1 || topState == GCodeState::pausing2
-		|| topState == GCodeState::filamentChangePause1 || topState == GCodeState::filamentChangePause2
-#if HAS_VOLTAGE_MONITOR
-		|| topState == GCodeState::powerFailPausing1
-#endif
-	   )
-	{
-		return true;
-	}
-
-	return pausePending;
+	return pausePending || fileGCode->IsPausing() || triggerGCode->IsPausing() || autoPauseGCode->IsPausing() || daemonGCode->IsPausing();
 }
 
 bool GCodes::IsResuming() const noexcept
 {
-	const GCodeState topState = fileGCode->OriginalMachineState().state;
-	return topState == GCodeState::resuming1 || topState == GCodeState::resuming2 || topState == GCodeState::resuming3;
+	return fileGCode->IsResuming();
 }
 
 bool GCodes::IsRunning() const noexcept
@@ -2607,17 +2582,18 @@ void GCodes::FileMacroCyclesReturn(GCodeBuffer& gb) noexcept
 			FileData &file = gb.MachineState().fileState;
 			gb.GetFileInput()->Reset(file);
 			file.Close();
+
+			gb.PopState(true);
 #endif
 		}
 
-		gb.PopState(true);
 		gb.Init();
 	}
 }
 
 // Home one or more of the axes
 // 'reply' is only written if there is an error.
-GCodeResult GCodes::DoHome(GCodeBuffer& gb, const StringRef& reply)
+GCodeResult GCodes::DoHome(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException)
 {
 	if (!LockMovementAndWaitForStandstill(gb))
 	{
@@ -3023,7 +2999,7 @@ void GCodes::StartPrinting(bool fromStart) noexcept
 }
 
 // Function to handle dwell delays. Returns true for dwell finished, false otherwise.
-GCodeResult GCodes::DoDwell(GCodeBuffer& gb) noexcept
+GCodeResult GCodes::DoDwell(GCodeBuffer& gb) THROWS(GCodeException)
 {
 	int32_t dwell;
 	if (gb.Seen('S'))
@@ -3072,7 +3048,7 @@ GCodeResult GCodes::DoDwell(GCodeBuffer& gb) noexcept
 }
 
 // Set offset, working and standby temperatures for a tool. I.e. handle a G10.
-GCodeResult GCodes::SetOrReportOffsets(GCodeBuffer &gb, const StringRef& reply)
+GCodeResult GCodes::SetOrReportOffsets(GCodeBuffer &gb, const StringRef& reply) THROWS(GCodeException)
 {
 	int32_t toolNumber = 0;
 	bool seenP = false;
@@ -3168,8 +3144,7 @@ GCodeResult GCodes::SetOrReportOffsets(GCodeBuffer &gb, const StringRef& reply)
 GCodeResult GCodes::ManageTool(GCodeBuffer& gb, const StringRef& reply)
 {
 	// Check tool number
-	gb.MustSee('P');
-	const unsigned int toolNumber = gb.GetUIValue();
+	const unsigned int toolNumber = gb.GetLimitedUIValue('P', MaxTools);
 
 	bool seen = false;
 
@@ -3350,12 +3325,18 @@ void GCodes::SaveFanSpeeds() noexcept
 	pausedDefaultFanSpeed = lastDefaultFanSpeed;
 }
 
-// Handle sending a reply back to the appropriate interface(s).
+// Handle sending a reply back to the appropriate interface(s) and update lastResult
 // Note that 'reply' may be empty. If it isn't, then we need to append newline when sending it.
 void GCodes::HandleReply(GCodeBuffer& gb, GCodeResult rslt, const char* reply) noexcept
 {
 	gb.SetLastResult(rslt);
+	HandleReplyPreserveResult(gb, rslt, reply);
+}
 
+// Handle sending a reply back to the appropriate interface(s) but dpm't update lastResult
+// Note that 'reply' may be empty. If it isn't, then we need to append newline when sending it.
+void GCodes::HandleReplyPreserveResult(GCodeBuffer& gb, GCodeResult rslt, const char *reply) noexcept
+{
 #if HAS_LINUX_INTERFACE
 	// Deal with replies to the Linux interface
 	if (gb.IsBinary())
@@ -4385,7 +4366,7 @@ void GCodes::GrabResource(const GCodeBuffer& gb, Resource r) noexcept
 			do
 			{
 				m->lockedResources.ClearBit(r);
-				m = m->previous;
+				m = m->GetPrevious();
 			}
 			while (m != nullptr);
 		}
@@ -4424,7 +4405,7 @@ void GCodes::UnlockResource(const GCodeBuffer& gb, Resource r) noexcept
 		do
 		{
 			mc->lockedResources.ClearBit(r);
-			mc = mc->previous;
+			mc = mc->GetPrevious();
 		} while (mc != nullptr);
 		resourceOwners[r] = nullptr;
 	}
@@ -4433,7 +4414,7 @@ void GCodes::UnlockResource(const GCodeBuffer& gb, Resource r) noexcept
 // Release all locks, except those that were owned when the current macro was started
 void GCodes::UnlockAll(const GCodeBuffer& gb) noexcept
 {
-	const GCodeMachineState * const mc = gb.MachineState().previous;
+	const GCodeMachineState * const mc = gb.MachineState().GetPrevious();
 	const GCodeMachineState::ResourceBitmap resourcesToKeep = (mc == nullptr) ? GCodeMachineState::ResourceBitmap() : mc->lockedResources;
 	for (size_t i = 0; i < NumResources; ++i)
 	{

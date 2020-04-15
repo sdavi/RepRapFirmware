@@ -144,7 +144,8 @@ bool GCodes::HandleGcode(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeEx
 			if (err != nullptr)
 			{
 				AbortPrint(gb);
-				gb.SetState(GCodeState::waitingForSpecialMoveToComplete, err);	// force the user position to be restored
+				gb.MachineState().SetError(err);
+				gb.SetState(GCodeState::waitingForSpecialMoveToComplete);	// force the user position to be restored
 			}
 		}
 		break;
@@ -169,7 +170,8 @@ bool GCodes::HandleGcode(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeEx
 			if (err != nullptr)
 			{
 				AbortPrint(gb);
-				gb.SetState(GCodeState::waitingForSpecialMoveToComplete, err);	// force the user position to be restored
+				gb.MachineState().SetError(err);
+				gb.SetState(GCodeState::waitingForSpecialMoveToComplete);	// force the user position to be restored
 			}
 		}
 		break;
@@ -847,6 +849,7 @@ bool GCodes::HandleMcode(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeEx
 			break;
 
 		case 226: // Synchronous pause, normally initiated from within the file being printed
+		case 601:
 			if (!isPaused && !IsPausing())
 			{
 				if (gb.IsDoingFileMacro())
@@ -3476,7 +3479,7 @@ bool GCodes::HandleMcode(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeEx
 			break;
 #endif
 
-		// For case 600, see 226
+		// For cases 600 and 601, see 226
 
 		// M650 (set peel move parameters) and M651 (execute peel move) are no longer handled specially. Use macros to specify what they should do.
 
@@ -4466,7 +4469,7 @@ bool GCodes::HandleResult(GCodeBuffer& gb, GCodeResult rslt, const StringRef& re
 		break;
 	}
 
-	if (gb.MachineState().state == GCodeState::normal)
+	if (gb.MachineState().GetState() == GCodeState::normal)
 	{
 		gb.StopTimer();
 		UnlockAll(gb);

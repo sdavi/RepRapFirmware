@@ -228,6 +228,7 @@ public:
 	const GCodeBuffer* GetInput(size_t n) const noexcept { return gcodeSources[n]; }
 	const GCodeBuffer* GetInput(GCodeChannel n) const noexcept { return gcodeSources[n.RawValue()]; }
 	const ObjectTracker *GetBuildObjects() const noexcept { return &buildObjects; }
+	const RestorePoint *GetRestorePoint(size_t n) const pre(n < NumRestorePoints) { return &numberedRestorePoints[n]; }
 
 # if HAS_VOLTAGE_MONITOR
 	const char *GetPowerFailScript() const noexcept { return powerFailScript; }
@@ -307,6 +308,7 @@ private:
 		pre(outBuf == nullptr || rslt == GCodeResult::ok) noexcept;
 
 	void HandleReply(GCodeBuffer& gb, OutputBuffer *reply) noexcept;
+	void HandleReplyPreserveResult(GCodeBuffer& gb, GCodeResult rslt, const char *reply) noexcept;	// Handle G-Code replies
 
 	bool DoStraightMove(GCodeBuffer& gb, bool isCoordinated, const char *& err) __attribute__((hot));	// Execute a straight move
 	bool DoArcMove(GCodeBuffer& gb, bool clockwise, const char *& err)				// Execute an arc move
@@ -315,17 +317,17 @@ private:
 	bool CheckEnoughAxesHomed(AxesBitmap axesMoved) noexcept;						// Check that enough axes have been homed
 	bool TravelToStartPoint(GCodeBuffer& gb) noexcept;								// Set up a move to travel to the resume point
 
-	GCodeResult DoDwell(GCodeBuffer& gb) noexcept;									// Wait for a bit
-	GCodeResult DoHome(GCodeBuffer& gb, const StringRef& reply);					// Home some axes
-	GCodeResult SetOrReportOffsets(GCodeBuffer& gb, const StringRef& reply);		// Deal with a G10
-	GCodeResult SetPositions(GCodeBuffer& gb);										// Deal with a G92
-	GCodeResult StraightProbe(GCodeBuffer& gb, const StringRef& reply);				// Deal with a G38.x
-	GCodeResult DoDriveMapping(GCodeBuffer& gb, const StringRef& reply) noexcept;	// Deal with a M584
-	GCodeResult ProbeTool(GCodeBuffer& gb, const StringRef& reply);					// Deal with a M585
+	GCodeResult DoDwell(GCodeBuffer& gb) THROWS(GCodeException);									// Wait for a bit
+	GCodeResult DoHome(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException);				// Home some axes
+	GCodeResult SetOrReportOffsets(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException);	// Deal with a G10
+	GCodeResult SetPositions(GCodeBuffer& gb) THROWS(GCodeException);								// Deal with a G92
+	GCodeResult StraightProbe(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException);		// Deal with a G38.x
+	GCodeResult DoDriveMapping(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException);		// Deal with a M584
+	GCodeResult ProbeTool(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException);			// Deal with a M585
 	GCodeResult FindCenterOfCavity(GCodeBuffer& gb, const StringRef& reply, const bool towardsMin = true) THROWS(GCodeException);	// Deal with a M675
-	GCodeResult SetDateTime(GCodeBuffer& gb,const  StringRef& reply) noexcept;		// Deal with a M905
-	GCodeResult SavePosition(GCodeBuffer& gb,const  StringRef& reply) noexcept;		// Deal with G60
-	GCodeResult ConfigureDriver(GCodeBuffer& gb, const StringRef& reply) noexcept;	// Deal with M569
+	GCodeResult SetDateTime(GCodeBuffer& gb,const StringRef& reply) THROWS(GCodeException);			// Deal with a M905
+	GCodeResult SavePosition(GCodeBuffer& gb,const StringRef& reply) THROWS(GCodeException);		// Deal with G60
+	GCodeResult ConfigureDriver(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException);	// Deal with M569
 
 	bool ProcessWholeLineComment(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException);	// Process a whole-line comment
 
@@ -410,7 +412,7 @@ private:
 	bool WriteConfigOverrideHeader(FileStore *f) const noexcept;				// Write the config-override header
 #endif
 
-	void CopyConfigFinalValues(GCodeBuffer& gb) noexcept;						// Copy the feed rate etc. from the daemon to the input channels
+	void CheckFinishedRunningConfigFile(GCodeBuffer& gb) noexcept;						// Copy the feed rate etc. from the daemon to the input channels
 
 	MessageType GetMessageBoxDevice(GCodeBuffer& gb) const;						// Decide which device to display a message box on
 	void DoManualProbe(GCodeBuffer&, const char *message, const char *title, const AxesBitmap); // Do manual probe in arbitrary direction

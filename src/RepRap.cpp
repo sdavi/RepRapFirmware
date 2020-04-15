@@ -174,6 +174,14 @@ constexpr ObjectModelArrayDescriptor RepRap::toolsArrayDescriptor =
 	[] (const ObjectModel *self, ObjectExplorationContext& context) noexcept -> ExpressionValue { return ExpressionValue(((const RepRap*)self)->GetTool(context.GetLastIndex()).Ptr()); }
 };
 
+constexpr ObjectModelArrayDescriptor RepRap::restorePointsArrayDescriptor =
+{
+	nullptr,
+	[] (const ObjectModel *self, const ObjectExplorationContext&) noexcept -> size_t { return NumRestorePoints; },
+	[] (const ObjectModel *self, ObjectExplorationContext& context) noexcept -> ExpressionValue
+																		{ return ExpressionValue(((const RepRap*)self)->gCodes->GetRestorePoint(context.GetLastIndex())); }
+};
+
 constexpr ObjectModelArrayDescriptor RepRap::volumesArrayDescriptor =
 {
 	nullptr,
@@ -247,8 +255,11 @@ constexpr ObjectModelTableEntry RepRap::objectModelTable[] =
 	{ "heaters",				OBJECT_MODEL_FUNC_NOSELF((int32_t)MaxHeaters),							ObjectModelEntryFlags::verbose },
 	{ "heatersPerTool",			OBJECT_MODEL_FUNC_NOSELF((int32_t)MaxHeatersPerTool),					ObjectModelEntryFlags::verbose },
 	{ "monitorsPerHeater",		OBJECT_MODEL_FUNC_NOSELF((int32_t)MaxMonitorsPerHeater),				ObjectModelEntryFlags::verbose },
+	{ "restorePoints",			OBJECT_MODEL_FUNC_NOSELF((int32_t)NumRestorePoints),					ObjectModelEntryFlags::verbose },
 	{ "sensors",				OBJECT_MODEL_FUNC_NOSELF((int32_t)MaxSensors),							ObjectModelEntryFlags::verbose },
 	{ "spindles",				OBJECT_MODEL_FUNC_NOSELF((int32_t)MaxSpindles),							ObjectModelEntryFlags::verbose },
+	{ "tools",					OBJECT_MODEL_FUNC_NOSELF((int32_t)MaxTools),							ObjectModelEntryFlags::verbose },
+	{ "trackedObects",			OBJECT_MODEL_FUNC_NOSELF((int32_t)MaxTrackedObjects),					ObjectModelEntryFlags::verbose },
 	{ "triggers",				OBJECT_MODEL_FUNC_NOSELF((int32_t)MaxTriggers),							ObjectModelEntryFlags::verbose },
 	// TODO userVariables
 #if HAS_MASS_STORAGE
@@ -278,6 +289,7 @@ constexpr ObjectModelTableEntry RepRap::objectModelTable[] =
 	{ "powerFailScript",		OBJECT_MODEL_FUNC(self->gCodes->GetPowerFailScript()),					ObjectModelEntryFlags::none },
 #endif
 	{ "previousTool",			OBJECT_MODEL_FUNC((int32_t)self->previousToolNumber),					ObjectModelEntryFlags::live },
+	{ "restorePoints",			OBJECT_MODEL_FUNC_NOSELF(&restorePointsArrayDescriptor),				ObjectModelEntryFlags::none },
 	{ "status",					OBJECT_MODEL_FUNC(self->GetStatusString()),								ObjectModelEntryFlags::live },
 	{ "upTime",					OBJECT_MODEL_FUNC_NOSELF((int32_t)((millis64()/1000u) & 0x7FFFFFFF)),	ObjectModelEntryFlags::live },
 
@@ -295,15 +307,17 @@ constexpr ObjectModelTableEntry RepRap::objectModelTable[] =
 
 	// 6. MachineModel.seqs
 	{ "boards",					OBJECT_MODEL_FUNC((int32_t)self->boardsSeq),							ObjectModelEntryFlags::live },
+#if HAS_MASS_STORAGE
 	{ "directories",			OBJECT_MODEL_FUNC((int32_t)self->directoriesSeq),						ObjectModelEntryFlags::live },
+#endif
 	{ "fans",					OBJECT_MODEL_FUNC((int32_t)self->fansSeq),								ObjectModelEntryFlags::live },
 	{ "heat",					OBJECT_MODEL_FUNC((int32_t)self->heatSeq),								ObjectModelEntryFlags::live },
 	{ "inputs",					OBJECT_MODEL_FUNC((int32_t)self->inputsSeq),							ObjectModelEntryFlags::live },
 	{ "job",					OBJECT_MODEL_FUNC((int32_t)self->jobSeq),								ObjectModelEntryFlags::live },
 	// no need for 'limits' because it never changes
 	{ "move",					OBJECT_MODEL_FUNC((int32_t)self->moveSeq),								ObjectModelEntryFlags::live },
-	{ "network",				OBJECT_MODEL_FUNC((int32_t)self->networkSeq),							ObjectModelEntryFlags::live },
 #if HAS_NETWORKING
+	{ "network",				OBJECT_MODEL_FUNC((int32_t)self->networkSeq),							ObjectModelEntryFlags::live },
 	{ "reply",					OBJECT_MODEL_FUNC_NOSELF((int32_t)HttpResponder::GetReplySeq()),		ObjectModelEntryFlags::live },
 #endif
 #if SUPPORT_SCANNER
@@ -320,14 +334,18 @@ constexpr ObjectModelTableEntry RepRap::objectModelTable[] =
 
 constexpr uint8_t RepRap::objectModelTableDescriptor[] =
 {
-	6 + HAS_MASS_STORAGE,		// number of sub-tables
-	15 + SUPPORT_SCANNER,
+	7,																		// number of sub-tables
+	14 + SUPPORT_SCANNER + HAS_MASS_STORAGE,								// root
 #if HAS_MASS_STORAGE
-	8, 							// directories
+	8, 																		// directories
 #else
-	0,
+	0,																		// directories
 #endif
-	22, 12 + HAS_VOLTAGE_MONITOR, 2, 6, 12 + HAS_NETWORKING + SUPPORT_SCANNER + HAS_MASS_STORAGE
+	25,																		// limits
+	13 + HAS_VOLTAGE_MONITOR,												// state
+	2,																		// state/beep
+	6,																		// state.messageBox
+	10 + 2 * HAS_NETWORKING + SUPPORT_SCANNER + 2 * HAS_MASS_STORAGE		// seqs
 };
 
 DEFINE_GET_OBJECT_MODEL_TABLE(RepRap)
