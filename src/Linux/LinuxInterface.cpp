@@ -324,13 +324,26 @@ void LinuxInterface::Spin()
 				break;
 			}
 
-			// Send a firmware message
+			// Send a firmware message, typically a response to a command that has been passed to DSF.
+			// These responses can get quite long (e.g. responses to M20) so receive it into an OutputBuffer.
 			case LinuxRequest::Message:
 			{
-				String<StringLength256> message;
-				StringRef messageRef = message.GetRef();
-				MessageType type = transfer->ReadMessage(messageRef);
-				reprap.GetPlatform().Message(type, message.c_str());
+				OutputBuffer *buf;
+				if (OutputBuffer::Allocate(buf))
+				{
+					MessageType type;
+					if (transfer->ReadMessage(type, buf))
+					{
+						// FIXME Push flag is not supported yet
+						reprap.GetPlatform().Message(type, buf);
+					}
+					else
+					{
+						// Not enough memory for reading the whole message, try again later
+						OutputBuffer::ReleaseAll(buf);
+						packetAcknowledged = false;
+					}
+				}
 				break;
 			}
 
@@ -511,6 +524,11 @@ void LinuxInterface::Diagnostics(MessageType mtype)
 	transfer->Diagnostics(mtype);
 	reprap.GetPlatform().MessageF(mtype, "Number of disconnects: %" PRIu32 "\n", numDisconnects);
 	reprap.GetPlatform().MessageF(mtype, "Buffer RX/TX: %d/%d-%d\n", (int)rxPointer, (int)txPointer, (int)txLength);
+}
+
+bool LinuxInterface::IsConnected() const
+{
+	return transfer->IsConnected();
 }
 
 bool LinuxInterface::FillBuffer(GCodeBuffer &gb)

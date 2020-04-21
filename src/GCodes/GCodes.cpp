@@ -891,21 +891,30 @@ void GCodes::DoPause(GCodeBuffer& gb, PauseReason reason, const char *msg) noexc
 			pauseRestorePoint.moveCoords[axis] = currentUserPosition[axis];
 		}
 
-#if HAS_MASS_STORAGE
-		// If we skipped any moves, reset the file pointer to the start of the first move we need to replay
-		// The following could be delayed until we resume the print
-		if (pauseRestorePoint.filePos != noFilePosition)
+#if HAS_LINUX_INTERFACE
+		if (reprap.UsingLinuxInterface())
 		{
-			FileData& fdata = fileGCode->MachineState().fileState;
-			if (fdata.IsLive())
-			{
-				fileGCode->RestartFrom(pauseRestorePoint.filePos);						// TODO we ought to restore the line number too, but currently we don't save it
-				UnlockAll(*fileGCode);													// release any locks it had
-			}
+			fileGCode->Init();															// clear the next move
+			UnlockAll(*fileGCode);														// release any locks it had
 		}
-#else
-		fileGCode->Init();																// clear the next move
-		UnlockAll(*fileGCode);															// release any locks it had
+		else
+		{
+#endif
+#if HAS_MASS_STORAGE
+			// If we skipped any moves, reset the file pointer to the start of the first move we need to replay
+			// The following could be delayed until we resume the print
+			if (pauseRestorePoint.filePos != noFilePosition)
+			{
+				FileData& fdata = fileGCode->MachineState().fileState;
+				if (fdata.IsLive())
+				{
+					fileGCode->RestartFrom(pauseRestorePoint.filePos);						// TODO we ought to restore the line number too, but currently we don't save it
+					UnlockAll(*fileGCode);													// release any locks it had
+				}
+			}
+#endif
+#if HAS_LINUX_INTERFACE
+		}
 #endif
 
 		codeQueue->PurgeEntries();
@@ -1566,9 +1575,11 @@ const char * GCodes::LoadExtrusionAndFeedrateFromGCode(GCodeBuffer& gb, bool isP
 					virtualExtruderPosition = moveArg;
 				}
 
-				// rawExtruderTotal is used to calculate print progress, so it must be based on the requested extrusion before accounting for mixing,
-				// otherwise IDEX ditto printing and similar gives strange results
-				if (isPrintingMove && moveBuffer.moveType == 0 && !doingToolChange)
+				// rawExtruderTotal is used to calculate print progress, so it must be based on the requested extrusion from the slicer
+				// before accounting for mixing, extrusion factor etc.
+				// We used to have 'isPrintingMove &&' in the condition too, but this excluded wipe-while-retracting moves, so it gave wrong results for % print complete.
+				// We still exclude extrusion during tool changing and other macros, because that is extrusion not known to the slicer.
+				if (moveBuffer.moveType == 0 && !gb.IsDoingFileMacro())
 				{
 					rawExtruderTotal += requestedExtrusionAmount;
 				}
@@ -1586,7 +1597,7 @@ const char * GCodes::LoadExtrusionAndFeedrateFromGCode(GCodeBuffer& gb, bool isP
 						{
 							extrusionAmount *= volumetricExtrusionFactors[extruder];
 						}
-						if (isPrintingMove && moveBuffer.moveType == 0 && !doingToolChange)
+						if (moveBuffer.moveType == 0 && !gb.IsDoingFileMacro())
 						{
 							rawExtruderTotalByDrive[extruder] += extrusionAmount;
 						}
@@ -1620,12 +1631,11 @@ const char * GCodes::LoadExtrusionAndFeedrateFromGCode(GCodeBuffer& gb, bool isP
 								extrusionAmount *= volumetricExtrusionFactors[extruder];
 							}
 
-							if (isPrintingMove && moveBuffer.moveType == 0 && !doingToolChange)
+							if (moveBuffer.moveType == 0 && !gb.IsDoingFileMacro())
 							{
 								rawExtruderTotalByDrive[extruder] += extrusionAmount;
 								rawExtruderTotal += extrusionAmount;
 							}
-							extrusionAmount *= volumetricExtrusionFactors[extruder];
 							moveBuffer.coords[ExtruderToLogicalDrive(extruder)] = (moveBuffer.applyM220M221)
 																					? extrusionAmount * extrusionFactors[extruder]
 																					: extrusionAmount;
@@ -3370,7 +3380,7 @@ void GCodes::HandleReplyPreserveResult(GCodeBuffer& gb, GCodeResult rslt, const 
 	// Also check that this response was triggered by a gcode
 	if (   reply[0] == 0
 		&& (   (gb.MachineState().doingFileMacro && !gb.MachineState().waitingForAcknowledgement)			// we must acknowledge M292
-			|| &gb == fileGCode || &gb == queuedGCode || &gb == triggerGCode || &gb == autoPauseGCode
+			|| &gb == fileGCode || &gb == queuedGCode || &gb == triggerGCode || &gb == autoPauseGCode || &gb == auxGCode
 		   )
 	   )
 	{

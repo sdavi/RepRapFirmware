@@ -367,16 +367,15 @@ GCodeChannel DataTransfer::ReadEvaluateExpression(size_t packetLength, StringRef
 	return GCodeChannel(header->channel);
 }
 
-MessageType DataTransfer::ReadMessage(StringRef& message) noexcept
+bool DataTransfer::ReadMessage(MessageType& type, OutputBuffer *buf) noexcept
 {
 	// Read header
 	const MessageHeader *header = ReadDataHeader<MessageHeader>();
+	type = header->messageType;
 
-	// Read message data
+	// Read message data and check if the it could be fully read
 	const char *messageData = ReadData(header->length);
-	message.copy(messageData, header->length);
-
-	return header->messageType;
+	return buf->copy(messageData, header->length) == header->length;
 }
 
 void DataTransfer::ExchangeHeader() noexcept

@@ -13,6 +13,9 @@
 #include "GCodeException.h"
 #include "GCodeQueue.h"
 #include "Heating/Heat.h"
+#if HAS_LINUX_INTERFACE
+# include "Linux/LinuxInterface.h"
+#endif
 #include "Movement/Move.h"
 #include "Network.h"
 #include "Scanner.h"
@@ -425,8 +428,19 @@ bool GCodes::HandleMcode(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeEx
 	}
 
 #if HAS_LINUX_INTERFACE
-	// TODO add more codes
-	if (reprap.UsingLinuxInterface() && !gb.IsBinary() && code == 20)
+	// Pass file- and system-related commands to DSF if they came from somewhere else. They will be passed back to us via a binary buffer or separate SPI message if necessary.
+	if (   reprap.UsingLinuxInterface() && reprap.GetLinuxInterface().IsConnected() && !gb.IsBinary()
+		&& (   code == 0 || code == 1
+			|| code == 20 || code == 21 || code == 22 || code == 23 || code == 24 || code == 26
+			|| code == 30 || code == 32 || code == 36 || code == 37 || code == 38 || code == 39
+			|| code == 112
+			|| code == 374 || code == 375
+			|| code == 470 || code == 471
+			|| code == 500 || code == 501 || code == 503 || code == 505 || code == 550
+			|| code == 703
+			|| code == 905 || code == 929 || code == 997 || code == 999
+		   )
+	   )
 	{
 		gb.SendToSbc();
 		return false;
@@ -678,7 +692,7 @@ bool GCodes::HandleMcode(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeEx
 				{
 					if (!OutputBuffer::Allocate(outBuf))
 					{
-						return false;													// cannot allocate an output buffer, try again later
+						return false;												// cannot allocate an output buffer, try again later
 					}
 
 					// To mimic the behaviour of the official RepRapPro firmware:
@@ -690,7 +704,7 @@ bool GCodes::HandleMcode(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeEx
 						outBuf->copy("GCode files:\n");
 					}
 
-					bool encapsulateList = gb.MachineState().compatibility != Compatibility::Marlin;
+					const bool encapsulateList = gb.MachineState().compatibility != Compatibility::Marlin;
 					FileInfo fileInfo;
 					if (MassStorage::FindFirst(dir.c_str(), fileInfo))
 					{
@@ -888,7 +902,7 @@ bool GCodes::HandleMcode(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeEx
 		case 25: // Pause the print
 			if (isPaused)
 			{
-				reply.copy("Printing is already paused!!");
+				reply.copy("Printing is already paused!");
 				result = GCodeResult::error;
 			}
 			else if (!reprap.GetPrintMonitor().IsPrinting())
@@ -1119,7 +1133,7 @@ bool GCodes::HandleMcode(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeEx
 			{
 				const uint32_t gpioPortNumber = gb.GetLimitedUIValue('P', MaxGpOutPorts);
 				gb.MustSee('S');
-				result = platform.GetGpioPort(gpioPortNumber).WriteAnalog(gpioPortNumber, false, gb.GetPwmValue(), gb, reply);
+				result = platform.GetGpOutPort(gpioPortNumber).WriteAnalog(gpioPortNumber, false, gb.GetPwmValue(), gb, reply);
 			}
 			break;
 
@@ -1685,7 +1699,7 @@ bool GCodes::HandleMcode(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeEx
 				}
 				else
 				{
-					result = platform.DiagnosticTest(gb, reply, type);
+					result = platform.DiagnosticTest(gb, reply, outBuf, type);
 				}
 			}
 			break;
@@ -2190,7 +2204,7 @@ bool GCodes::HandleMcode(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeEx
 				}
 
 				const float pwm = angleOrWidth * (ServoRefreshFrequency/1e6);
-				result = platform.GetGpioPort(gpioPortNumber).WriteAnalog(gpioPortNumber, true, pwm, gb, reply);
+				result = platform.GetGpOutPort(gpioPortNumber).WriteAnalog(gpioPortNumber, true, pwm, gb, reply);
 			}
 			break;
 

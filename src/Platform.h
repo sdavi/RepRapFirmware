@@ -36,7 +36,8 @@ Licence: GPL
 #include "MessageType.h"
 #include "Tools/Spindle.h"
 #include "Endstops/EndstopsManager.h"
-#include <GPIO/GpioPorts.h>
+#include <GPIO/GpInPort.h>
+#include <GPIO/GpOutPort.h>
 #include <General/IPAddress.h>
 
 #if defined(DUET_NG)
@@ -282,7 +283,7 @@ public:
 	void Exit() noexcept;									// Shut down tidily. Calling Init after calling this should reset to the beginning
 
 	void Diagnostics(MessageType mtype) noexcept;
-	GCodeResult DiagnosticTest(GCodeBuffer& gb, const StringRef& reply, unsigned int d);
+	GCodeResult DiagnosticTest(GCodeBuffer& gb, const StringRef& reply, OutputBuffer*& buf, unsigned int d) THROWS(GCodeException);
 	bool WasDeliberateError() const noexcept { return deliberateError; }
 	void LogError(ErrorCode e) noexcept { errorCodeBits |= (uint32_t)e; }
 
@@ -296,7 +297,8 @@ public:
 	const char* GetBoardString() const noexcept;
 
 #if SUPPORT_OBJECT_MODEL
-	size_t GetNumInputsToReport() const noexcept;
+	size_t GetNumGpInputsToReport() const noexcept;
+	size_t GetNumGpOutputsToReport() const noexcept;
 #endif
 
 #ifdef DUET_NG
@@ -551,14 +553,14 @@ public:
 	// Misc
 	GCodeResult ConfigurePort(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException);
 
-	const GpOutputPort& GetGpioPort(size_t gpoutPortNumber) const noexcept
-		pre(gpioPortNumber < MaxGpOutPorts) 	{ return gpoutPorts[gpoutPortNumber]; }
+	GpOutputPort& GetGpOutPort(size_t gpoutPortNumber) noexcept
+		pre(gpioPortNumber < MaxGpOutPorts)	{ return gpoutPorts[gpoutPortNumber]; }
 	const GpInputPort& GetGpInPort(size_t gpinPortNumber) const noexcept
 		pre(gpinPortNumber < MaxGpInPorts) 	{ return gpinPorts[gpinPortNumber]; }
 
 #if SAM4E || SAM4S || SAME70
 	uint32_t Random() noexcept;
-	void PrintUniqueId(MessageType mtype) noexcept;
+	void AppendUniqueId(const StringRef& reply) noexcept;
 #endif
 
 #if SUPPORT_CAN_EXPANSION
