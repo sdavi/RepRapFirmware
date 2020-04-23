@@ -28,11 +28,7 @@ constexpr size_t LinuxTransferBufferSize = 4096;    // maximum length of a data 
 
 static_assert(LinuxTransferBufferSize % sizeof(uint32_t) == 0, "LinuxTransferBufferSize must be a whole number of dwords");
 
-#ifndef __LPC17xx__
 constexpr size_t MaxCodeBufferSize = 256;			// maximum length of a G/M/T-code in binary encoding
-#else
-constexpr size_t MaxCodeBufferSize = 104;           // maximum length of a G/M/T-code in binary encoding
-#endif
 
 static_assert(MaxCodeBufferSize % sizeof(uint32_t) == 0, "MaxCodeBufferSize must be a whole number of dwords");
 static_assert(MaxCodeBufferSize >= GCODE_LENGTH, "MaxCodeBufferSize must be at least as big as GCODE_LENGTH");
