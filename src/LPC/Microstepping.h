@@ -16,13 +16,13 @@ class Microstepping {
 
 	public:
 
-		static void Init();
-		static bool Set(uint8_t drive, uint8_t value);
-		static uint8_t Read( uint8_t drive );
+		static void Init() noexcept;
+		static bool Set(uint8_t drive, uint8_t value) noexcept;
+		static uint8_t Read( uint8_t drive ) noexcept;
 
 	private:
 
-		Microstepping() { };
+		Microstepping() noexcept { };
 
 };
 #endif /* ALLIGATOR_MICROSTEPPING_H_ */

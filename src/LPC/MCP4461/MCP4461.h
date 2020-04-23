@@ -29,16 +29,17 @@
 #define MCP4461_DECREMENT 0x8 //10 left shift by 2
 #define MCP4461_READ 0xC //11 left shift by 2
 
-class MCP4461{
+class MCP4461
+{
 public:
-  MCP4461();
-  void begin();
-  void setMCP4461Address(uint8_t);
-  void setVolatileWiper(uint8_t, uint16_t);
-  void setVolatileWipers(uint16_t);
-  void toggleWiper(uint8_t); //NOT YET IMPLEMENTED
-  uint16_t getVolatileWiper(uint8_t);
-  uint16_t getStatus();
+  MCP4461() noexcept;
+  void begin() noexcept;
+  void setMCP4461Address(uint8_t) noexcept;
+  void setVolatileWiper(uint8_t, uint16_t) noexcept;
+  void setVolatileWipers(uint16_t) noexcept;
+  void toggleWiper(uint8_t) noexcept; //NOT YET IMPLEMENTED
+  uint16_t getVolatileWiper(uint8_t) noexcept;
+  uint16_t getStatus() noexcept;
 
 private:
   uint8_t _mcp4461_address;

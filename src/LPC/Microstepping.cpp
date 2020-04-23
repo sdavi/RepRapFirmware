@@ -15,12 +15,14 @@
 
 uint8_t microstepping[ NumDirectDrivers ];
 
-void Microstepping::Init() {
+void Microstepping::Init() noexcept
+{
     //nothing to do
     
 }
 
-bool Microstepping::Set(uint8_t drive, uint8_t value) {
+bool Microstepping::Set(uint8_t drive, uint8_t value) noexcept
+{
 
 	// Do not exceed the maximum value
 	if ( drive >= (NumDirectDrivers) )
@@ -37,7 +39,8 @@ bool Microstepping::Set(uint8_t drive, uint8_t value) {
     return true;
 }
 
-uint8_t Microstepping::Read( uint8_t drive ) {
+uint8_t Microstepping::Read( uint8_t drive ) noexcept
+{
 
 	// Do not exceed the maximum value
 	if ( drive < (NumDirectDrivers) )

@@ -26,21 +26,25 @@ GPL v3
 //the local master through the Wire library
 //if the MCP4461 does not have a default address, call set address before
 //trying to communicate
-MCP4461::MCP4461() {
+MCP4461::MCP4461() noexcept
+{
   _mcp4461_address = DEFAULT_ADDRESS;
 }
 
 //initialise the I2C interface as master ie local address is 0
-void MCP4461::begin() {
+void MCP4461::begin() noexcept
+{
 	MCP_WIRE.begin();
 }
 
 //set the MCP4461 address
-void MCP4461::setMCP4461Address(uint8_t mcp4461_addr) {
+void MCP4461::setMCP4461Address(uint8_t mcp4461_addr) noexcept
+{
 	_mcp4461_address = mcp4461_addr;
 }
 
-void MCP4461::setVolatileWiper(uint8_t wiper, uint16_t wiper_value){
+void MCP4461::setVolatileWiper(uint8_t wiper, uint16_t wiper_value) noexcept
+{
   uint16_t value = wiper_value;
   if (value > 0xFF) value = 0x100;
   uint8_t d_byte = (uint8_t)value;
@@ -69,13 +73,14 @@ void MCP4461::setVolatileWiper(uint8_t wiper, uint16_t wiper_value){
   MCP_WIRE.write(c_byte);
   MCP_WIRE.write(d_byte);
   MCP_WIRE.endTransmission(); //do not release bus
-  }
+}
 
 
   
 //set all the wipers in one transmission, more verbose but quicker than multiple calls to
 //setVolatileWiper(uint8_t wiper, uint16_t wiper_value)
-void MCP4461::setVolatileWipers(uint16_t wiper_value){
+void MCP4461::setVolatileWipers(uint16_t wiper_value) noexcept
+{
   uint16_t value = wiper_value;
   if (value > 0xFF) value = 0x100;
   uint8_t d_byte = (uint8_t)value;
@@ -110,7 +115,8 @@ void MCP4461::setVolatileWipers(uint16_t wiper_value){
 
   
 //return the volatile value for a specific wiper
-uint16_t MCP4461::getVolatileWiper(uint8_t wiper){
+uint16_t MCP4461::getVolatileWiper(uint8_t wiper) noexcept
+{
   uint16_t ret = 0;
   uint16_t c_byte =0;
   switch (wiper) {
@@ -148,7 +154,8 @@ uint16_t MCP4461::getVolatileWiper(uint8_t wiper){
 
 
 //return the status register
-uint16_t MCP4461::getStatus(){
+uint16_t MCP4461::getStatus() noexcept
+{
   uint16_t ret = 0;
   uint16_t c_byte =0;
   c_byte |= MCP4461_STATUS;
@@ -171,7 +178,8 @@ uint16_t MCP4461::getStatus(){
 
 //toggle a specific pot channel on and off
 /*  //NOT YET IMPLEMENTED
-void MCP4461::toggleWiper(uint8_t wiper){
+void MCP4461::toggleWiper(uint8_t wiper) noexcept
+ {
   uint16_t tcon = 0;
   uint16_t c_byte =0;
   //read the specific TCONX register to get the current stae of the

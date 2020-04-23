@@ -25,7 +25,7 @@ constexpr uint32_t IAP_PAGE_SIZE  = 256;
 #define IAP_LAST_SECTOR         29
 
 
-uint32_t *LPC_GetSoftwareResetDataSlotPtr(uint8_t slot)
+uint32_t *LPC_GetSoftwareResetDataSlotPtr(uint8_t slot) noexcept
 {
     return (uint32_t *) (START_ADDR_LAST_SECTOR + (slot*IAP_PAGE_SIZE));
 }
@@ -34,7 +34,7 @@ uint32_t *LPC_GetSoftwareResetDataSlotPtr(uint8_t slot)
 //When the Sector is erased, all the bits will be high
 //This checks if the first 4 bytes are all high for the designated software reset slot
 //the first 2 bytes of a used reset slot will have the magic number in it.
-bool LPC_IsSoftwareResetDataSlotVacant(uint8_t slot)
+bool LPC_IsSoftwareResetDataSlotVacant(uint8_t slot) noexcept
 {
     const uint32_t *p = (uint32_t *) (START_ADDR_LAST_SECTOR + (slot*IAP_PAGE_SIZE));
     
@@ -49,7 +49,7 @@ bool LPC_IsSoftwareResetDataSlotVacant(uint8_t slot)
     return true;
  }
 
-void LPC_ReadSoftwareResetDataSlot(uint8_t slot, void *data, uint32_t dataLength)
+void LPC_ReadSoftwareResetDataSlot(uint8_t slot, void *data, uint32_t dataLength) noexcept
 {
     uint32_t *slotStartAddress = (uint32_t *) (START_ADDR_LAST_SECTOR + (slot*IAP_PAGE_SIZE));
     memcpy(data, slotStartAddress, dataLength);
@@ -57,7 +57,7 @@ void LPC_ReadSoftwareResetDataSlot(uint8_t slot, void *data, uint32_t dataLength
 
 
 //erases a page in flash for the SoftwareResetData slot
-bool LPC_EraseSoftwareResetDataSlots()
+bool LPC_EraseSoftwareResetDataSlots() noexcept
 {
     // interrupts will be disabled before these are called.
     //__disable_irq(); //disable Interrupts
@@ -98,7 +98,8 @@ bool LPC_EraseSoftwareResetDataSlots()
     
 }
 
-bool LPC_WriteSoftwareResetData(uint8_t slot, const void *data, uint32_t dataLength){
+bool LPC_WriteSoftwareResetData(uint8_t slot, const void *data, uint32_t dataLength) noexcept
+{
 
     
     uint8_t iap_data_array[IAP_PAGE_SIZE];
