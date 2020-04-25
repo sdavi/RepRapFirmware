@@ -2330,10 +2330,12 @@ void GCodes::FinaliseMove(GCodeBuffer& gb) noexcept
 
 	if (buildObjects.IsCurrentObjectCancelled())
 	{
+#if SUPPORT_LASER
 		if (machineType == MachineType::laser)
 		{
 			platform.SetLaserPwm(0);
 		}
+#endif
 	}
 	else
 	{
@@ -2509,6 +2511,9 @@ void GCodes::EmergencyStop() noexcept
 			AbortPrint(*gbp);
 		}
 	}
+#if SUPPORT_LASER
+	moveBuffer.laserPwmOrIoBits.laserPwm = 0;
+#endif
 }
 
 // Run a file macro. Prior to calling this, 'state' must be set to the state we want to enter when the macro has been completed.
@@ -2962,10 +2967,11 @@ bool GCodes::QueueFileToPrint(const char* fileName, const StringRef& reply) noex
 }
 #endif
 
-// Start printing the file already selected
+// Start printing the file already selected. We must hold the movement lock and wait for all moves to finish before calling this, because of the call to ResetMoveCounters.
 void GCodes::StartPrinting(bool fromStart) noexcept
 {
 	buildObjects.Init();
+	reprap.GetMove().ResetMoveCounters();
 
 	if (fromStart)													// if not resurrecting a print
 	{
@@ -3679,7 +3685,6 @@ GCodeResult GCodes::LoadFilament(GCodeBuffer& gb, const StringRef& reply)
 		String<StringLength256> scratchString;
 		scratchString.printf("%s%s/%s", FILAMENTS_DIRECTORY, filamentName.c_str(), LOAD_FILAMENT_G);
 		DoFileMacro(gb, scratchString.c_str(), true, 701);
-		reprap.MoveUpdated();
 	}
 	else if (tool->GetFilament()->IsLoaded())
 	{
@@ -3714,7 +3719,6 @@ GCodeResult GCodes::UnloadFilament(GCodeBuffer& gb, const StringRef& reply)
 		String<StringLength256> scratchString;
 		scratchString.printf("%s%s/%s", FILAMENTS_DIRECTORY, tool->GetFilament()->GetName(), UNLOAD_FILAMENT_G);
 		DoFileMacro(gb, scratchString.c_str(), true, 702);
-		reprap.MoveUpdated();
 	}
 	return GCodeResult::ok;
 }
@@ -3759,7 +3763,7 @@ void GCodes::StopPrint(StopPrintReason reason) noexcept
 #endif
 	}
 
-	reprap.GetMove().ResetMoveCounters();
+	// Don't call ReserMoveCounters here because we can't be sure that the movement queue is empty
 	codeQueue->Clear();
 
 	UnlockAll(*fileGCode);
@@ -3822,9 +3826,12 @@ void GCodes::StopPrint(StopPrintReason reason) noexcept
 				}
 				break;
 
+#if SUPPORT_LASER
 			case MachineType::laser:
 				platform.SetLaserPwm(0);
+				moveBuffer.laserPwmOrIoBits.laserPwm = 0;
 				break;
+#endif
 
 			default:
 				break;
@@ -4552,6 +4559,15 @@ void GCodes::ActivateHeightmap(bool activate) noexcept
 		// Update the current position to allow for any bed compensation at the current XY coordinates
 		reprap.GetMove().GetCurrentUserPosition(moveBuffer.coords, 0, reprap.GetCurrentTool());
 		ToolOffsetInverseTransform(moveBuffer.coords, currentUserPosition);		// update user coordinates to reflect any height map offset at the current position
+
+#if HAS_LINUX_INTERFACE
+		// Set a dummy heightmap filename
+		if (reprap.UsingLinuxInterface())
+		{
+			HeightMap& map = reprap.GetMove().AccessHeightMap();
+			map.SetFileName(DefaultHeightMapFile);
+		}
+#endif
 	}
 }
 

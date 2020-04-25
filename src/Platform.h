@@ -545,10 +545,12 @@ public:
 	// CNC and laser support
 	Spindle& AccessSpindle(size_t slot) noexcept { return spindles[slot]; }
 
+#if SUPPORT_LASER
 	void SetLaserPwm(Pwm_t pwm) noexcept;
 	float GetLaserPwm() const noexcept;							// return laser PWM in 0..1
 	bool AssignLaserPin(GCodeBuffer& gb, const StringRef& reply);
 	void SetLaserPwmFrequency(PwmFrequency freq) noexcept;
+#endif
 
 	// Misc
 	GCodeResult ConfigurePort(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException);
@@ -827,8 +829,11 @@ private:
 	Spindle spindles[MaxSpindles];
 	float extrusionAncilliaryPwmValue;
 	PwmPort extrusionAncilliaryPwmPort;
+
+#if SUPPORT_LASER
 	PwmPort laserPort;
 	float lastLaserPwm;
+#endif
 
 	// Power on/off
 	bool deferredPowerDown;
