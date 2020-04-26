@@ -19,16 +19,34 @@
 #include "RepRapFirmware.h"
 #include "RepRap.h"
 #include "Tasks.h"
+#include <Movement/StepTimer.h>
 
 
 extern SDCard *_ffs[_DRIVES]; //Defined in CoreLPC
 
 static unsigned int highestSdRetriesDone = 0;
+static uint32_t longestWriteTime = 0;
+static uint32_t longestReadTime = 0;
+
 
 unsigned int DiskioGetAndClearMaxRetryCount() noexcept
 {
     const unsigned int ret = highestSdRetriesDone;
     highestSdRetriesDone = 0;
+    return ret;
+}
+
+float DiskioGetAndClearLongestReadTime() noexcept
+{
+    const float ret = (float)longestReadTime * StepTimer::StepClocksToMillis;
+    longestReadTime = 0;
+    return ret;
+}
+
+float DiskioGetAndClearLongestWriteTime() noexcept
+{
+    const float ret = (float)longestWriteTime * StepTimer::StepClocksToMillis;
+    longestWriteTime = 0;
     return ret;
 }
 
@@ -62,7 +80,21 @@ DRESULT disk_read (BYTE drv, BYTE *buff, DWORD sector, BYTE count) noexcept
     
     unsigned int retryNumber = 0;
     uint32_t retryDelay = SdCardRetryDelay;
-    while(_ffs[drv]->disk_read(buff, sector, count) != RES_OK){
+    for (;;)
+    {
+        uint32_t time = StepTimer::GetTimerTicks();
+        const DRESULT ret = _ffs[drv]->disk_read(buff, sector, count);
+        time = StepTimer::GetTimerTicks() - time;
+        if (time > longestReadTime)
+        {
+            longestReadTime = time;
+        }
+
+        if (ret == RES_OK)
+        {
+            break;
+        }
+        
         lock.Release();
         ++retryNumber;
         if (retryNumber == MaxSdCardTries)
@@ -101,8 +133,21 @@ DRESULT disk_write (BYTE drv, const BYTE *buff, DWORD sector, BYTE count) noexce
     /* Write the data */
     unsigned int retryNumber = 0;
     uint32_t retryDelay = SdCardRetryDelay;
-    while (_ffs[drv]->disk_write(buff, sector, count) != RES_OK)
+    for (;;)
     {
+        uint32_t time = StepTimer::GetTimerTicks();
+        const DRESULT ret = _ffs[drv]->disk_write(buff, sector, count);
+        time = StepTimer::GetTimerTicks() - time;
+        if (time > longestWriteTime)
+        {
+            longestWriteTime = time;
+        }
+
+        if (ret == RES_OK)
+        {
+            break;
+        }
+
         lock.Release();
         ++retryNumber;
         if (retryNumber == MaxSdCardTries)
