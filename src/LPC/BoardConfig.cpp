@@ -307,11 +307,11 @@ Pin BoardConfig::StringToPin(const char *strvalue) noexcept
     {
         const char *ptr = nullptr;
         
-        uint8_t port = SafeStrtol(strvalue, &ptr, 10);
+        uint8_t port = SafeStrtoul(strvalue, &ptr, 10);
         if(ptr > strvalue && port <= 4)
         {
             strvalue+=2;
-            uint8_t pin = SafeStrtol(strvalue, &ptr, 10);
+            uint8_t pin = SafeStrtoul(strvalue, &ptr, 10);
             
             if(ptr > strvalue && pin < 32)
             {
