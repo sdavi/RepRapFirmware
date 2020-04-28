@@ -1328,7 +1328,7 @@ void StringParser::GetIPAddress(IPAddress& returnedIp) THROWS(GCodeException)
 	for (;;)
 	{
 		const char *pp;
-		const unsigned long v = SafeStrtoul(p, &pp);
+		const uint32_t v = StrToU32(p, &pp);
 		if (pp == p || v > 255)
 		{
 			readPointer = -1;
@@ -1645,7 +1645,7 @@ int32_t StringParser::ReadIValue() THROWS(GCodeException)
 	}
 
 	const char *endptr;
-	const int32_t rslt = SafeStrtol(gb.buffer + readPointer, &endptr);
+	const int32_t rslt = StrToI32(gb.buffer + readPointer, &endptr);
 	readPointer = endptr - gb.buffer;
 	return rslt;
 }
