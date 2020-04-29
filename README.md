@@ -1,7 +1,7 @@
 LPC Port of RepRapFirmware
 ==========================
 
-This is an experimental port of [dc42's RepRapFirmware](https://github.com/dc42/RepRapFirmware/)) for LPC1768/LPC1769 based boards.  
+This is an experimental port of [dc42's RepRapFirmware](https://github.com/dc42/RepRapFirmware/) for LPC1768/LPC1769 based boards.  
 
 *Note: This firmware does not show up as a mass storage device when connected to a computer. Physical access to the internal sdcard may be required in order to revert back or update.*
 
@@ -19,7 +19,7 @@ The CPUs targeted in this port only have 64K RAM which is less than those that r
   * Auto-calibration restrictions to save memory:
     * Maximum number of probe points of 121; and
     * Delta maximum calibration points of 16
-  * To support the number of different boards, a /sys/board.txt config file on the SDCard is used to configure the hardware pin assignments. Some example board config files [can be found here](https://github.com/sdavi/RepRapFirmware/tree/v2-dev-lpc/EdgeRelease/ExampleBoardConfig)
+  * To support the number of different boards, a /sys/board.txt config file on the SDCard is used to configure the hardware pin assignments. Some example board config files [can be found here](LPC/ExampleBoardConfig)
     * M122 P200 command is used to print the mappings have been loaded by board.txt  and displays all options supported by board.txt
 
 **The LPC port is experimental and is likely to contain bugs - Use at your own risk**
