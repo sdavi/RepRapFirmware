@@ -88,6 +88,7 @@ constexpr ObjectModelTableEntry Move::objectModelTable[] =
 	{ "printingAcceleration",	OBJECT_MODEL_FUNC(self->maxPrintingAcceleration, 1),									ObjectModelEntryFlags::none },
 	{ "speedFactor",			OBJECT_MODEL_FUNC_NOSELF(reprap.GetGCodes().GetSpeedFactor(), 2),						ObjectModelEntryFlags::none },
 	{ "travelAcceleration",		OBJECT_MODEL_FUNC(self->maxTravelAcceleration, 1),										ObjectModelEntryFlags::none },
+	{ "virtualEPos",			OBJECT_MODEL_FUNC_NOSELF(reprap.GetGCodes().GetVirtualExtruderPosition(), 5),			ObjectModelEntryFlags::live },
 	{ "workspaceNumber",		OBJECT_MODEL_FUNC_NOSELF((int32_t)reprap.GetGCodes().GetWorkplaceCoordinateSystemNumber()),	ObjectModelEntryFlags::none },
 
 	// 1. Move.Daa members
@@ -142,14 +143,18 @@ constexpr ObjectModelTableEntry Move::objectModelTable[] =
 	{ "tanYZ",					OBJECT_MODEL_FUNC(self->tanYZ, 4),														ObjectModelEntryFlags::none },
 };
 
-constexpr uint8_t Move::objectModelTableDescriptor[] = { 10, 12, 3, 2, 4 + SUPPORT_LASER, 3, 2, 2, 5 + (HAS_MASS_STORAGE || HAS_LINUX_INTERFACE), 2, 3 };
+constexpr uint8_t Move::objectModelTableDescriptor[] = { 10, 13, 3, 2, 4 + SUPPORT_LASER, 3, 2, 2, 5 + (HAS_MASS_STORAGE || HAS_LINUX_INTERFACE), 2, 3 };
 
 DEFINE_GET_OBJECT_MODEL_TABLE(Move)
 
 #endif
 
 Move::Move() noexcept
-	: active(false),
+	:
+#if SUPPORT_ASYNC_MOVES
+	  heightController(nullptr),
+#endif
+	  active(false),
 	  drcEnabled(false),											// disable dynamic ringing cancellation
 	  maxPrintingAcceleration(10000.0), maxTravelAcceleration(10000.0),
 	  drcPeriod(0.025),												// 40Hz
@@ -1174,7 +1179,7 @@ void Move::ReleaseAuxMove(bool hasNewMove) noexcept
 }
 
 // Configure height following
-GCodeResult Move::ConfigureHeightFollowing(GCodeBuffer& gb, const StringRef& reply) noexcept
+GCodeResult Move::ConfigureHeightFollowing(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException)
 {
 	if (heightController == nullptr)
 	{
@@ -1184,7 +1189,7 @@ GCodeResult Move::ConfigureHeightFollowing(GCodeBuffer& gb, const StringRef& rep
 }
 
 // Start/stop height following
-GCodeResult Move::StartHeightFollowing(GCodeBuffer& gb, const StringRef& reply) noexcept
+GCodeResult Move::StartHeightFollowing(GCodeBuffer& gb, const StringRef& reply) THROWS(GCodeException)
 {
 	if (heightController == nullptr)
 	{

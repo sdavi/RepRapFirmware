@@ -747,12 +747,8 @@ void RepRap::Diagnostics(MessageType mtype) noexcept
 	platform->MessageF(mtype, "%s version %s running on %s\n", FIRMWARE_NAME, VERSION, platform->GetElectronicsString());
 #endif
 
-#if SAM4E || SAM4S || SAME70
-	{
-		String<StringLength100> id;
-		platform->AppendUniqueId(id.GetRef());
-		platform->Message(mtype, id.c_str());
-	}
+#if SUPPORTS_UNIQUE_ID
+	platform->MessageF(mtype, "Board ID: %s\n", platform->GetUniqueIdString());
 #endif
 
 	// Show the used and free buffer counts. Do this early in case we are running out of them and the diagnostics get truncated.
@@ -1694,9 +1690,9 @@ OutputBuffer *RepRap::GetStatusResponse(uint8_t type, ResponseSource source) con
 				// Axis mapping
 				response->cat(",\"axisMap\":[[");
 				tool->GetXAxisMap().Iterate
-					([response](unsigned int xi, bool first) noexcept
+					([response](unsigned int xi, unsigned int count) noexcept
 						{
-							if (!first)
+							if (count != 0)
 							{
 								response->cat(',');
 							}
@@ -1706,9 +1702,9 @@ OutputBuffer *RepRap::GetStatusResponse(uint8_t type, ResponseSource source) con
 				response->cat("],[");
 
 				tool->GetYAxisMap().Iterate
-					([response](unsigned int yi, bool first) noexcept
+					([response](unsigned int yi, unsigned int count) noexcept
 						{
-							if (!first)
+							if (count != 0)
 							{
 								response->cat(',');
 							}
@@ -1802,12 +1798,7 @@ OutputBuffer *RepRap::GetStatusResponse(uint8_t type, ResponseSource source) con
 		}
 	}
 
-	if (response->cat('}') == 0)
-	{
-		OutputBuffer::ReleaseAll(response);
-		return nullptr;
-	}
-
+	response->cat('}');
 	return response;
 }
 

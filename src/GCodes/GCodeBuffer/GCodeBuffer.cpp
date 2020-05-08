@@ -280,9 +280,9 @@ int GCodeBuffer::GetCommandNumber() const noexcept
 	return PARSER_OPERATION(GetCommandNumber());
 }
 
-const char *GCodeBuffer::GetCompleteParameters() noexcept
+void GCodeBuffer::GetCompleteParameters(const StringRef& str) THROWS(GCodeException)
 {
-	return PARSER_OPERATION(GetCompleteParameters());
+	PARSER_OPERATION(GetCompleteParameters(str));
 }
 
 int8_t GCodeBuffer::GetCommandFraction() const noexcept
@@ -755,6 +755,7 @@ void GCodeBuffer::RequestMacroFile(const char *filename, bool reportMissing, boo
 	{
 		// This suppresses unwanted replies in the USB console
 		isBinaryBuffer = true;
+		memset(buffer, 0, sizeof(CodeHeader));
 	}
 
 	requestedMacroFile.copy(filename);

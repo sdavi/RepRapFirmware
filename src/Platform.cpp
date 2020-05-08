@@ -218,7 +218,7 @@ static inline const char* GetFilamentName(size_t extruder) noexcept
 
 constexpr ObjectModelTableEntry Platform::objectModelTable[] =
 {
-	// 0. boards[] members
+	// 0. boards[0] members
 #if SUPPORT_CAN_EXPANSION
 	{ "canAddress",			OBJECT_MODEL_FUNC_NOSELF((int32_t)0),																ObjectModelEntryFlags::none },
 #endif
@@ -243,7 +243,10 @@ constexpr ObjectModelTableEntry Platform::objectModelTable[] =
 	{ "name",				OBJECT_MODEL_FUNC_NOSELF(BOARD_NAME),																ObjectModelEntryFlags::none },
 	{ "shortName",			OBJECT_MODEL_FUNC_NOSELF(BOARD_SHORT_NAME),															ObjectModelEntryFlags::none },
 # endif
-	{ "supports12864",		OBJECT_MODEL_FUNC_NOSELF(SUPPORT_12864_LCD ? true : false),											ObjectModelEntryFlags::none },
+	{ "supports12864",		OBJECT_MODEL_FUNC_NOSELF(SUPPORT_12864_LCD ? true : false),											ObjectModelEntryFlags::verbose },
+#if SUPPORTS_UNIQUE_ID
+	{ "uniqueId",			OBJECT_MODEL_FUNC(self->GetUniqueIdString()),														ObjectModelEntryFlags::none },
+#endif
 #if HAS_12V_MONITOR
 	{ "v12",				OBJECT_MODEL_FUNC(self, 6),																			ObjectModelEntryFlags::live },
 #endif
@@ -320,7 +323,7 @@ constexpr ObjectModelTableEntry Platform::objectModelTable[] =
 constexpr uint8_t Platform::objectModelTableDescriptor[] =
 {
 	9,																		// number of sections
-	12 + HAS_LINUX_INTERFACE + HAS_12V_MONITOR + SUPPORT_CAN_EXPANSION,		// section 0: boards[]
+	12 + HAS_LINUX_INTERFACE + HAS_12V_MONITOR + SUPPORT_CAN_EXPANSION + SUPPORTS_UNIQUE_ID,		// section 0: boards[0]
 	3,																		// section 1: mcuTemp
 #if HAS_VOLTAGE_MONITOR
 	3,																		// section 2: vIn
@@ -411,9 +414,8 @@ void Platform::Init() noexcept
 	DmacManager::Init();
 #endif
 
+#if SUPPORTS_UNIQUE_ID
 	// Read the unique ID of the MCU, if it has one
-
-#if SAM4E || SAM4S || SAME70
 	memset(uniqueId, 0, sizeof(uniqueId));
 
 	Cache::Disable();
@@ -439,10 +441,60 @@ void Platform::Init() noexcept
 		{
 			defaultMacAddress.bytes[(i % 5) + 1] ^= idBytes[i];
 		}
+
+		// Convert the unique ID and checksum to a string as 30 base5 alphanumeric digits
+		char *digitPtr = uniqueIdChars;
+		for (size_t i = 0; i < 30; ++i)
+		{
+			if ((i % 5) == 0 && i != 0)
+			{
+				*digitPtr++ = '-';
+			}
+			const size_t index = (i * 5) / 32;
+			const size_t shift = (i * 5) % 32;
+			uint32_t val = uniqueId[index] >> shift;
+			if (shift > 32 - 5)
+			{
+				// We need some bits from the next dword too
+				val |= uniqueId[index + 1] << (32 - shift);
+			}
+			val &= 31;
+			char c;
+			if (val < 10)
+			{
+				c = val + '0';
+			}
+			else
+			{
+				c = val + ('A' - 10);
+				// We have 26 letters in the usual A-Z alphabet and we only need 22 of them plus 0-9.
+				// So avoid using letters C, E, I and O which are easily mistaken for G, F, 1 and 0.
+				if (c >= 'C')
+				{
+					++c;
+				}
+				if (c >= 'E')
+				{
+					++c;
+				}
+				if (c >= 'I')
+				{
+					++c;
+				}
+				if (c >= 'O')
+				{
+					++c;
+				}
+			}
+			*digitPtr++ = c;
+		}
+		*digitPtr = 0;
+
 	}
 	else
 	{
 		defaultMacAddress.SetDefault();
+		strcpy(uniqueIdChars, "unknown");
 	}
 #endif
 
@@ -488,9 +540,6 @@ void Platform::Init() noexcept
 	auxMutex.Create("Aux");
 	auxEnabled = auxRaw = false;
 	auxSeq = 0;
-# ifndef DUET3									// for Duet 3 we only enable the aux device if it is requested by M575
-	SERIAL_AUX_DEVICE.begin(baudRates[1]);		// this can't be done in the constructor because the port initialisation in CoreNG isn't complete at that point
-# endif
 #endif
 
 #ifdef SERIAL_AUX2_DEVICE
@@ -859,14 +908,17 @@ void Platform::Beep(int freq, int ms) noexcept
 void Platform::SendAuxMessage(const char* msg) noexcept
 {
 #ifdef SERIAL_AUX_DEVICE
-	OutputBuffer *buf;
-	if (OutputBuffer::Allocate(buf))
+	if (auxEnabled)
 	{
-		buf->copy("{\"message\":");
-		buf->EncodeString(msg, false);
-		buf->cat("}\n");
-		auxOutput.Push(buf);
-		FlushAuxMessages();
+		OutputBuffer *buf;
+		if (OutputBuffer::Allocate(buf))
+		{
+			buf->copy("{\"message\":");
+			buf->EncodeString(msg, false);
+			buf->cat("}\n");
+			auxOutput.Push(buf);
+			FlushAuxMessages();
+		}
 	}
 #endif
 }
@@ -881,22 +933,26 @@ void Platform::Exit() noexcept
 	SmartDrivers::Exit();
 #endif
 
-	// Release all output buffers
-	usbOutput.ReleaseAll();
-#ifdef SERIAL_AUX2_DEVICE
-	aux2Output.ReleaseAll();
-#endif
-
 	// Stop processing data. Don't try to send a message because it will probably never get there.
 	active = false;
 
-	// Close down USB and serial ports
+	// Close down USB and serial ports and release output buffers
 	SERIAL_MAIN_DEVICE.end();
+	usbOutput.ReleaseAll();
+
 #ifdef SERIAL_AUX_DEVICE
-	SERIAL_AUX_DEVICE.end();
+# ifdef DUET3
+	if (auxEnabled)
+# endif
+	{
+		SERIAL_AUX_DEVICE.end();
+	}
+	auxOutput.ReleaseAll();
 #endif
+
 #ifdef SERIAL_AUX2_DEVICE
 	SERIAL_AUX2_DEVICE.end();
+	aux2Output.ReleaseAll();
 #endif
 
 }
@@ -1449,7 +1505,7 @@ void Platform::ReportDrivers(MessageType mt, DriversBitmap& whichDrivers, const 
 	{
 		String<StringLength100> scratchString;
 		scratchString.printf("%s reported by driver(s)", text);
-		whichDrivers.Iterate([&scratchString](unsigned int drive, bool) noexcept { scratchString.catf(" %u", drive); });
+		whichDrivers.Iterate([&scratchString](unsigned int drive, unsigned int) noexcept { scratchString.catf(" %u", drive); });
 		MessageF(mt, "%s\n", scratchString.c_str());
 		reported = true;
 		whichDrivers.Clear();
@@ -1630,64 +1686,6 @@ void Platform::InitialiseInterrupts() noexcept
 //extern "C" uint32_t longestWriteWaitTime, shortestWriteWaitTime, longestReadWaitTime, shortestReadWaitTime;
 //extern uint32_t maxRead, maxWrite;
 
-#if SAM4E || SAM4S || SAME70
-
-// Print the unique processor ID
-void Platform::AppendUniqueId(const StringRef& reply) noexcept
-{
-	// Print the unique ID and checksum as 30 base5 alphanumeric digits
-	char digits[30 + 5 + 1];			// 30 characters, 5 separators, 1 null terminator
-	char *digitPtr = digits;
-	for (size_t i = 0; i < 30; ++i)
-	{
-		if ((i % 5) == 0 && i != 0)
-		{
-			*digitPtr++ = '-';
-		}
-		const size_t index = (i * 5) / 32;
-		const size_t shift = (i * 5) % 32;
-		uint32_t val = uniqueId[index] >> shift;
-		if (shift > 32 - 5)
-		{
-			// We need some bits from the next dword too
-			val |= uniqueId[index + 1] << (32 - shift);
-		}
-		val &= 31;
-		char c;
-		if (val < 10)
-		{
-			c = val + '0';
-		}
-		else
-		{
-			c = val + ('A' - 10);
-			// We have 26 letters in the usual A-Z alphabet and we only need 22 of them plus 0-9.
-			// So avoid using letters C, E, I and O which are easily mistaken for G, F, 1 and 0.
-			if (c >= 'C')
-			{
-				++c;
-			}
-			if (c >= 'E')
-			{
-				++c;
-			}
-			if (c >= 'I')
-			{
-				++c;
-			}
-			if (c >= 'O')
-			{
-				++c;
-			}
-		}
-		*digitPtr++ = c;
-	}
-	*digitPtr = 0;
-	reply.lcatf("Board ID: %s", digits);
-}
-
-#endif
-
 // Return diagnostic information
 void Platform::Diagnostics(MessageType mtype) noexcept
 {
@@ -1806,8 +1804,10 @@ void Platform::Diagnostics(MessageType mtype) noexcept
 								GetModuleName(srdBuf[slot].resetReason & 0x1F), srdBuf[slot].neverUsedRam, slot);
 			// Our format buffer is only 256 characters long, so the next 2 lines must be written separately
 			MessageF(mtype,
-					"Software reset code 0x%04x HFSR 0x%08" PRIx32 " CFSR 0x%08" PRIx32 " ICSR 0x%08" PRIx32 " BFAR 0x%08" PRIx32 " SP 0x%08" PRIx32 " Task 0x%08" PRIx32 "\n",
-					srdBuf[slot].resetReason, srdBuf[slot].hfsr, srdBuf[slot].cfsr, srdBuf[slot].icsr, srdBuf[slot].bfar, srdBuf[slot].sp, srdBuf[slot].taskName
+					"Software reset code 0x%04x HFSR 0x%08" PRIx32 " CFSR 0x%08" PRIx32 " ICSR 0x%08" PRIx32 " BFAR 0x%08" PRIx32 " SP 0x%08" PRIx32 " Task %c%c%c%c\n",
+					srdBuf[slot].resetReason, srdBuf[slot].hfsr, srdBuf[slot].cfsr, srdBuf[slot].icsr, srdBuf[slot].bfar, srdBuf[slot].sp,
+					(unsigned int)(srdBuf[slot].taskName & 0xFF), (unsigned int)((srdBuf[slot].taskName >> 8) & 0xFF),
+					(unsigned int)((srdBuf[slot].taskName >> 16) & 0xFF), (unsigned int)((srdBuf[slot].taskName >> 24) & 0xFF)
 				);
 			if (srdBuf[slot].sp != 0xFFFFFFFF)
 			{
@@ -2041,12 +2041,10 @@ GCodeResult Platform::DiagnosticTest(GCodeBuffer& gb, const StringRef& reply, Ou
 #endif
 			buf->lcat((testFailed) ? "***** ONE OR MORE CHECKS FAILED *****" : "All checks passed");
 
-#if SAM4E || SAM4S || SAME70
+#if SUPPORTS_UNIQUE_ID
 			if (!testFailed)
 			{
-				AppendUniqueId(reply);
-				buf->lcat(reply.c_str());
-				reply.Clear();
+				buf->lcatf("Board ID: %s", GetUniqueIdString());
 			}
 #endif
 		}
@@ -2244,7 +2242,7 @@ GCodeResult Platform::DiagnosticTest(GCodeBuffer& gb, const StringRef& reply, Ou
 void Platform::DriverCoolingFansOnOff(DriverChannelsBitmap driverChannelsMonitored, bool on) noexcept
 {
 	driverChannelsMonitored.Iterate
-		([this, on](unsigned int i, bool) noexcept
+		([this, on](unsigned int i, unsigned int) noexcept
 			{
 				if (on)
 				{
@@ -2347,7 +2345,7 @@ bool Platform::WriteAxisLimits(FileStore *f, AxesBitmap axesProbed, const float 
 
 	String<StringLength100> scratchString;
 	scratchString.printf("M208 S%d", sParam);
-	axesProbed.Iterate([&scratchString, limits](unsigned int axis, bool) noexcept { scratchString.catf(" %c%.2f", reprap.GetGCodes().GetAxisLetters()[axis], (double)limits[axis]); });
+	axesProbed.Iterate([&scratchString, limits](unsigned int axis, unsigned int) noexcept { scratchString.catf(" %c%.2f", reprap.GetGCodes().GetAxisLetters()[axis], (double)limits[axis]); });
 	scratchString.cat('\n');
 	return f->Write(scratchString.c_str());
 }
@@ -2975,18 +2973,12 @@ bool Platform::GetDriverStepTiming(size_t driver, float microseconds[4]) const n
 
 void Platform::EnableAux() noexcept
 {
-#ifdef DUET3
+#ifdef SERIAL_AUX_DEVICE
 	if (!auxEnabled)
 	{
-		// Initialize Serial port U(S)ART pins
-		ConfigurePin(APINS_Serial0);
-		setPullup(APIN_Serial0_RXD, true); 							// Enable pullup for RX0
-
 		SERIAL_AUX_DEVICE.begin(baudRates[1]);
 		auxEnabled = true;
 	}
-#else
-	auxEnabled = true;
 #endif
 }
 
@@ -4129,25 +4121,25 @@ GCodeResult Platform::ConfigureStallDetection(GCodeBuffer& gb, const StringRef& 
 	{
 		seen = true;
 		const int sgThreshold = gb.GetIValue();
-		drivers.Iterate([sgThreshold](unsigned int drive, bool) noexcept { SmartDrivers::SetStallThreshold(drive, sgThreshold); });
+		drivers.Iterate([sgThreshold](unsigned int drive, unsigned int) noexcept { SmartDrivers::SetStallThreshold(drive, sgThreshold); });
 	}
 	if (gb.Seen('F'))
 	{
 		seen = true;
 		const bool sgFilter = (gb.GetIValue() == 1);
-		drivers.Iterate([sgFilter](unsigned int drive, bool) noexcept { SmartDrivers::SetStallFilter(drive, sgFilter); });
+		drivers.Iterate([sgFilter](unsigned int drive, unsigned int) noexcept { SmartDrivers::SetStallFilter(drive, sgFilter); });
 	}
 	if (gb.Seen('H'))
 	{
 		seen = true;
 		const unsigned int stepsPerSecond = gb.GetUIValue();
-		drivers.Iterate([stepsPerSecond](unsigned int drive, bool) noexcept { SmartDrivers::SetStallMinimumStepsPerSecond(drive, stepsPerSecond); });
+		drivers.Iterate([stepsPerSecond](unsigned int drive, unsigned int) noexcept { SmartDrivers::SetStallMinimumStepsPerSecond(drive, stepsPerSecond); });
 	}
 	if (gb.Seen('T'))
 	{
 		seen = true;
 		const uint16_t coolStepConfig = (uint16_t)gb.GetUIValue();
-		drivers.Iterate([coolStepConfig](unsigned int drive, bool) noexcept { SmartDrivers::SetRegister(drive, SmartDriverRegister::coolStep, coolStepConfig); } );
+		drivers.Iterate([coolStepConfig](unsigned int drive, unsigned int) noexcept { SmartDrivers::SetRegister(drive, SmartDriverRegister::coolStep, coolStepConfig); } );
 	}
 	if (gb.Seen('R'))
 	{
@@ -4207,7 +4199,7 @@ GCodeResult Platform::ConfigureStallDetection(GCodeBuffer& gb, const StringRef& 
 	}
 
 	drivers.Iterate
-		([buf, this, &reply](unsigned int drive, bool) noexcept
+		([buf, this, &reply](unsigned int drive, unsigned int) noexcept
 			{
 #if SUPPORT_CAN_EXPANSION
 				buf->lcatf("Driver 0.%u: ", drive);

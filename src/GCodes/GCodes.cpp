@@ -120,6 +120,14 @@ GCodes::GCodes(Platform& p) noexcept :
 	spiGCode = nullptr;
 #endif
 	daemonGCode = new GCodeBuffer(GCodeChannel::Daemon, nullptr, fileInput, GenericMessage);
+#if defined(SERIAL_AUX2_DEVICE)
+	StreamGCodeInput * const aux2Input = new StreamGCodeInput(SERIAL_AUX2_DEVICE);
+	aux2GCode = new GCodeBuffer(GCodeChannel::Aux2, aux2Input, fileInput, Aux2Message);
+#elif HAS_LINUX_INTERFACE
+	aux2GCode = new GCodeBuffer(GCodeChannel::Aux2, nullptr, fileInput, Aux2Message);
+#else
+	aux2GCode = nullptr;
+#endif
 	autoPauseGCode = new GCodeBuffer(GCodeChannel::Autopause, nullptr, fileInput, GenericMessage);
 }
 
@@ -461,7 +469,7 @@ void GCodes::Spin() noexcept
 // Start a new gcode, or continue to execute one that has already been started:
 void GCodes::StartNextGCode(GCodeBuffer& gb, const StringRef& reply) noexcept
 {
-	if (IsPaused() && &gb == fileGCode)
+	if (IsPaused() && &gb == fileGCode && !gb.IsDoingFileMacro())
 	{
 		// We are paused, so don't process any more gcodes from the file being printed.
 		// There is a potential issue here if fileGCode holds any locks, so unlock everything.
@@ -514,7 +522,7 @@ void GCodes::StartNextGCode(GCodeBuffer& gb, const StringRef& reply) noexcept
 		 if (!(&gb == usbGCode && reprap.GetScanner().IsRegistered()))
 #endif
 	{
-		const bool gotCommand = (gb.GetNormalInput() != nullptr) ? gb.GetNormalInput()->FillBuffer(&gb) : false;
+		const bool gotCommand = (gb.GetNormalInput() != nullptr) && gb.GetNormalInput()->FillBuffer(&gb);
 		if (gotCommand)
 		{
 			gb.DecodeCommand();
@@ -561,9 +569,12 @@ void GCodes::DoFilePrint(GCodeBuffer& gb, const StringRef& reply) noexcept
 				// Finished a macro or finished processing config.g
 				gb.MachineState().CloseFile();
 				CheckFinishedRunningConfigFile(gb);
-				const bool hadFileError = gb.MachineState().fileError, wasBinary = gb.IsBinary();
+				const bool hadFileError = gb.MachineState().fileError;
 				Pop(gb, false);
 				gb.Init();
+
+				// Prepare the response to the command that invoked the macro
+				GCodeResult rslt = GCodeResult::ok;
 				if (gb.GetState() == GCodeState::doingUnsupportedCode)
 				{
 					gb.SetState(GCodeState::normal);
@@ -571,11 +582,9 @@ void GCodes::DoFilePrint(GCodeBuffer& gb, const StringRef& reply) noexcept
 
 					if (hadFileError)
 					{
-						HandleResult(gb, GCodeResult::warningNotSupported, reply, nullptr);
-					}
-					else
-					{
-						HandleReply(gb, GCodeResult::ok, "");
+						gb.PrintCommand(reply);
+						reply.cat(": Command is not supported");
+						rslt = GCodeResult::warning;
 					}
 				}
 				else if (gb.GetState() == GCodeState::doingUserMacro)
@@ -588,30 +597,27 @@ void GCodes::DoFilePrint(GCodeBuffer& gb, const StringRef& reply) noexcept
 					{
 						bool reportMissing, fromCode;
 						reply.printf("Macro file %s not found", gb.GetRequestedMacroFile(reportMissing, fromCode));
-						HandleReply(gb, GCodeResult::warning, reply.c_str());
-					}
-					else
-					{
-						HandleReply(gb, GCodeResult::ok, "");
+						rslt = GCodeResult::warning;
 					}
 				}
 				else if (gb.GetState() == GCodeState::loadingFilament && hadFileError)
 				{
 					// Don't perform final filament assignment if the load macro could not be processed
 					gb.SetState(GCodeState::normal);
-					HandleReply(gb, GCodeResult::ok, "");
-				}
-				else if (gb.GetState() == GCodeState::normal)
-				{
-					UnlockAll(gb);
-					HandleReply(gb, GCodeResult::ok, "");
 				}
 
-				// Need to send a final empty response to the SBC if the request came from a code so it can pop its stack
-				if (!wasBinary)
+				// Reset the GCodeBuffer to non-binary input if necessary, so that if we are in Marlin mode we will send an OK response
+				if (!gb.IsDoingFileMacro() && gb.GetNormalInput() != nullptr)
 				{
-					MessageType type = (MessageType)((1u << gb.GetChannel().ToBaseType()) | BinaryCodeReplyFlag);
-					platform.Message(type, "");
+					// Need to send a final empty response to the SBC if the request came from a code so it can pop its stack
+					HandleReplyPreserveResult(gb, (gb.GetState() == GCodeState::normal) ? rslt : GCodeResult::ok, "");
+					gb.FinishedBinaryMode();
+				}
+
+				if (gb.GetState() == GCodeState::normal)
+				{
+					UnlockAll(gb);
+					HandleReply(gb, rslt, reply.c_str());
 				}
 			}
 		}
@@ -2519,11 +2525,12 @@ void GCodes::EmergencyStop() noexcept
 
 // Run a file macro. Prior to calling this, 'state' must be set to the state we want to enter when the macro has been completed.
 // Return true if the file was found or it wasn't and we were asked to report that fact.
-// 'codeRunning' is the M command we are running, as follows;
+// 'codeRunning' is the G or M command we are running, or 0 for a tool change file. In particular:
 // 501 = running M501
 // 502 = running M502
 // 98 = running a macro explicitly via M98
-// -1 = running a system macro automatically
+// otherwise it is either the G- or M-code being executed, or 0 for a tool change file, or -1 for another system file
+// FIXME: sort this out, in particular when the call to RequestMacroFile needs the fromCode parameter to be true
 bool GCodes::DoFileMacro(GCodeBuffer& gb, const char* fileName, bool reportMissing, int codeRunning) noexcept
 {
 #if HAS_LINUX_INTERFACE
@@ -2534,7 +2541,7 @@ bool GCodes::DoFileMacro(GCodeBuffer& gb, const char* fileName, bool reportMissi
 			return true;
 		}
 
-		gb.RequestMacroFile(fileName, reportMissing, codeRunning >= 0);
+		gb.RequestMacroFile(fileName, reportMissing, gb.IsBinary() && codeRunning >= 0);
 	}
 	else
 #endif
@@ -3319,7 +3326,7 @@ void GCodes::SetMappedFanSpeed(float f) noexcept
 	else
 	{
 		const FansBitmap fanMap = ct->GetFanMapping();
-		fanMap.Iterate([f](unsigned int i, bool) noexcept { reprap.GetFansManager().SetFanValue(i, f); });
+		fanMap.Iterate([f](unsigned int i, unsigned int) noexcept { reprap.GetFansManager().SetFanValue(i, f); });
 	}
 }
 
@@ -4447,7 +4454,7 @@ void GCodes::UnlockAll(const GCodeBuffer& gb) noexcept
 // Append a list of axes to a string
 void GCodes::AppendAxes(const StringRef& reply, AxesBitmap axes) const noexcept
 {
-	axes.Iterate([reply, this](unsigned int axis, bool) noexcept { reply.cat(this->axisLetters[axis]); });
+	axes.Iterate([reply, this](unsigned int axis, unsigned int) noexcept { reply.cat(this->axisLetters[axis]); });
 }
 
 // Get the name of the current machine mode

@@ -39,15 +39,26 @@ bool Trigger::Check() noexcept
 	// Check the endstops
 	EndstopsManager& endstops = reprap.GetPlatform().GetEndstops();
 	(highLevelEndstops | lowLevelEndstops)
-		.Iterate([this, &endstops, &triggered](unsigned int axis, bool)
+		.Iterate([this, &endstops, &triggered](unsigned int axis, unsigned int)
 					{
 						const bool stopped = (endstops.Stopped(axis) == EndStopHit::atStop);
 						if (stopped != endstopStates.IsBitSet(axis))
 						{
-							endstopStates.SetOrClearBit(axis, stopped);
-							if (stopped == highLevelEndstops.IsBitSet(axis))
+							if (stopped)
 							{
-								triggered = true;
+								endstopStates.SetBit(axis);
+								if (highLevelEndstops.IsBitSet(axis))
+								{
+									triggered = true;
+								}
+							}
+							else
+							{
+								endstopStates.ClearBit(axis);
+								if (lowLevelEndstops.IsBitSet(axis))
+								{
+									triggered = true;
+								}
 							}
 						}
 					}
@@ -55,16 +66,28 @@ bool Trigger::Check() noexcept
 
 	Platform& platform = reprap.GetPlatform();
 	(highLevelInputs | lowLevelInputs)
-		.Iterate([this, &platform, &triggered](unsigned int inPort, bool)
+		.Iterate([this, &platform, &triggered](unsigned int inPort, unsigned int)
 					{
 						const bool isActive = reprap.GetPlatform().GetGpInPort(inPort).GetState();
 						if (isActive != inputStates.IsBitSet(inPort))
 						{
-							inputStates.SetOrClearBit(inPort, isActive);
-							if (isActive == highLevelInputs.IsBitSet(inPort))
+							if (isActive)
 							{
-								triggered = true;
+								inputStates.SetBit(inPort);
+								if (highLevelInputs.IsBitSet(inPort))
+								{
+									triggered = true;
+								}
 							}
+							else
+							{
+								inputStates.ClearBit(inPort);
+								if (lowLevelInputs.IsBitSet(inPort))
+								{
+									triggered = true;
+								}
+							}
+
 						}
 					}
 				);
@@ -76,7 +99,7 @@ bool Trigger::Check() noexcept
 GCodeResult Trigger::Configure(unsigned int number, GCodeBuffer &gb, const StringRef &reply)
 {
 	bool seen = false;
-	if (gb.Seen('C'))
+	if (gb.Seen('R'))
 	{
 		seen = true;
 		condition = gb.GetIValue();
@@ -102,9 +125,18 @@ GCodeResult Trigger::Configure(unsigned int number, GCodeBuffer &gb, const Strin
 			size_t numValues = MaxGpInPorts;
 			gb.GetUnsignedArray(inputNumbers, numValues, false);
 			const InputPortsBitmap portsToWaitFor = InputPortsBitmap::MakeFromArray(inputNumbers, numValues);
-			((sParam >= 1) ? highLevelInputs : lowLevelInputs) |= portsToWaitFor;
+			if (sParam < 0)
+			{
+				highLevelInputs &= ~portsToWaitFor;
+				lowLevelInputs &= ~portsToWaitFor;
+			}
+			else
+			{
+				((sParam >= 1) ? highLevelInputs : lowLevelInputs) |= portsToWaitFor;
+			}
 		}
 	}
+
 	AxesBitmap endstopsToWaitFor;
 	for (size_t axis = 0; axis < reprap.GetGCodes().GetTotalAxes(); ++axis)
 	{
@@ -115,8 +147,15 @@ GCodeResult Trigger::Configure(unsigned int number, GCodeBuffer &gb, const Strin
 		}
 	}
 
-	((sParam >= 1) ?highLevelEndstops : lowLevelEndstops) |= endstopsToWaitFor;
-
+	if (sParam < 0)
+	{
+		highLevelEndstops &= ~endstopsToWaitFor;
+		lowLevelEndstops &= ~endstopsToWaitFor;
+	}
+	else
+	{
+		((sParam >= 1) ? highLevelEndstops : lowLevelEndstops) |= endstopsToWaitFor;
+	}
 
 	inputStates.Clear();
 	(void)Check();					// set up initial input states
@@ -180,8 +219,8 @@ void Trigger::AppendInputNames(AxesBitmap endstops, InputPortsBitmap inputs, con
 	else
 	{
 		const char* const axisLetters = reprap.GetGCodes().GetAxisLetters();
-		endstops.Iterate([axisLetters, &reply](unsigned int axis, bool) noexcept { reply.catf(" %c", axisLetters[axis]); } );
-		inputs.Iterate([&reply](unsigned int port, bool) noexcept { reply.catf(" %d", port); } );
+		endstops.Iterate([axisLetters, &reply](unsigned int axis, unsigned int) noexcept { reply.catf(" %c", axisLetters[axis]); } );
+		inputs.Iterate([&reply](unsigned int port, unsigned int) noexcept { reply.catf(" %d", port); } );
 	}
 }
 

@@ -762,40 +762,55 @@ void HttpResponder::SendFile(const char* nameOfFileToSend, bool isWebFile) noexc
 			nameOfFileToSend = INDEX_PAGE_FILE;
 		}
 
-		for (;;)
+		if (isWebFile && strlen(nameOfFileToSend) > MaxExpectedWebDirFilenameLength)
 		{
-			// Try to open a gzipped version of the file first
-			if (!StringEndsWithIgnoreCase(nameOfFileToSend, ".gz") && strlen(nameOfFileToSend) + 3 <= MaxFilenameLength)
+			// We have been asked for a file with a very long name. Don't try to open it, because that may lead to MassStorage::CombineName generating an error message.
+			// Instead, report a possible virus attack from the sending IP address.
+			// Exception: it if is an OCSP request, just return 404.
+			if (!StringStartsWith(nameOfFileToSend, "/ocsp"))
 			{
-				String<MaxFilenameLength> nameBuf;
-				nameBuf.copy(nameOfFileToSend);
-				nameBuf.cat(".gz");
-				fileToSend = GetPlatform().OpenFile(GetPlatform().GetWebDir(), nameBuf.c_str(), OpenMode::read);
+				GetPlatform().MessageF(WarningMessage,
+										"IP %s requested file '%.20s...' from HTTP server, possibly a virus attack\n",
+										IP4String(GetRemoteIP()).c_str(), nameOfFileToSend);
+			}
+		}
+		else
+		{
+			for (;;)
+			{
+				// Try to open a gzipped version of the file first
+				if (!StringEndsWithIgnoreCase(nameOfFileToSend, ".gz") && strlen(nameOfFileToSend) + 3 <= MaxFilenameLength)
+				{
+					String<MaxFilenameLength> nameBuf;
+					nameBuf.copy(nameOfFileToSend);
+					nameBuf.cat(".gz");
+					fileToSend = GetPlatform().OpenFile(GetPlatform().GetWebDir(), nameBuf.c_str(), OpenMode::read);
+					if (fileToSend != nullptr)
+					{
+						zip = true;
+						break;
+					}
+				}
+
+				// That failed, so try to open the normal version of the file
+				fileToSend = GetPlatform().OpenFile(GetPlatform().GetWebDir(), nameOfFileToSend, OpenMode::read);
 				if (fileToSend != nullptr)
 				{
-					zip = true;
 					break;
 				}
-			}
 
-			// That failed, so try to open the normal version of the file
-			fileToSend = GetPlatform().OpenFile(GetPlatform().GetWebDir(), nameOfFileToSend, OpenMode::read);
-			if (fileToSend != nullptr)
-			{
-				break;
-			}
-
-			if (StringEqualsIgnoreCase(nameOfFileToSend, INDEX_PAGE_FILE))
-			{
-				nameOfFileToSend = OLD_INDEX_PAGE_FILE;			// the index file wasn't found, so try the old one
-			}
-			else if (!strchr(nameOfFileToSend, '.'))			// if we were asked to return a file without a '.' in the name, return the index page
-			{
-				nameOfFileToSend = INDEX_PAGE_FILE;
-			}
-			else
-			{
-				break;
+				if (StringEqualsIgnoreCase(nameOfFileToSend, INDEX_PAGE_FILE))
+				{
+					nameOfFileToSend = OLD_INDEX_PAGE_FILE;			// the index file wasn't found, so try the old one
+				}
+				else if (!strchr(nameOfFileToSend, '.'))			// if we were asked to return a file without a '.' in the name, return the index page
+				{
+					nameOfFileToSend = INDEX_PAGE_FILE;
+				}
+				else
+				{
+					break;
+				}
 			}
 		}
 
@@ -990,6 +1005,10 @@ void HttpResponder::SendJsonResponse(const char* command) noexcept
 		// Unfortunately the protocol is prone to deadlocking, because if most output buffers are used up holding a GCode reply,
 		// there may be insufficient buffers left to compose the status response to tell DWC that it needs to fetch that GCode reply.
 		// Until we fix the protocol, the best we can do is time out and throw some GCode responses away.
+#if 1
+		// DC 2020-05-05: we no longer retry or discard responses if there are no buffers available, instead we return a 503 error immediately
+		{
+#else
 		if (millis() - startedProcessingRequestAt >= MaxBufferWaitTime)
 		{
 			{
@@ -1003,6 +1022,7 @@ void HttpResponder::SendJsonResponse(const char* command) noexcept
 					return;					// next time we try, hopefully there will be a spare buffer
 				}
 			}
+#endif
 
 			// We've freed all the buffer we have
 			ReportOutputBufferExhaustion(__FILE__, __LINE__);
