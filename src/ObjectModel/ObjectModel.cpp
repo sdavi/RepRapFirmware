@@ -283,40 +283,56 @@ GCodeException ObjectExplorationContext::ConstructParseException(const char *msg
 }
 
 // Report this object
-void ObjectModel::ReportAsJson(OutputBuffer* buf, ObjectExplorationContext& context, uint8_t tableNumber, const char* filter) const
+void ObjectModel::ReportAsJson(OutputBuffer* buf, ObjectExplorationContext& context, const ObjectModelClassDescriptor * null classDescriptor, uint8_t tableNumber, const char* filter) const
 {
 	if (context.IncreaseDepth())
 	{
 		bool added = false;
-		const uint8_t *descriptor;
-		const ObjectModelTableEntry *tbl = GetObjectModelTable(descriptor);
-		if (tableNumber < descriptor[0])
+		if (classDescriptor == nullptr)
 		{
-			size_t numEntries = descriptor[tableNumber + 1];
-			while (tableNumber != 0)
-			{
-				--tableNumber;
-				tbl += descriptor[tableNumber + 1];
-			}
+			classDescriptor = GetObjectModelClassDescriptor();
+		}
 
-			while (numEntries != 0)
+		while (classDescriptor != nullptr)
+		{
+			const uint8_t * const descriptor = classDescriptor->omd;
+			if (tableNumber < descriptor[0])
 			{
-				if (tbl->Matches(filter, context))
+				const ObjectModelTableEntry *tbl = classDescriptor->omt;
+				for (size_t i = 0; i < tableNumber; ++i)
 				{
-					if (tbl->ReportAsJson(buf, context, this, filter, !added))
-					{
-						added = true;
-					}
+					tbl += descriptor[i + 1];
 				}
-				--numEntries;
-				++tbl;
+
+				size_t numEntries = descriptor[tableNumber + 1];
+				while (numEntries != 0)
+				{
+					if (tbl->Matches(filter, context))
+					{
+						if (tbl->ReportAsJson(buf, context, classDescriptor, this, filter, !added))
+						{
+							added = true;
+						}
+					}
+					--numEntries;
+					++tbl;
+				}
 			}
-			if (added && *filter == 0)
+			if (tableNumber != 0)
+			{
+				break;
+			}
+			classDescriptor = classDescriptor->parent;			// do parent table too
+		}
+
+		if (added)
+		{
+			if (*filter == 0)
 			{
 				buf->cat('}');
 			}
 		}
-		if (!added)
+		else
 		{
 			buf->cat((*filter == 0) ? "{}" : "null");
 		}
@@ -333,12 +349,12 @@ void ObjectModel::ReportAsJson(OutputBuffer *buf, const char *filter, const char
 {
 	const unsigned int defaultMaxDepth = (wantArrayLength) ? 99 : (filter[0] == 0) ? 1 : 99;
 	ObjectExplorationContext context(reportFlags, wantArrayLength, defaultMaxDepth);
-	ReportAsJson(buf, context, 0, filter);
+	ReportAsJson(buf, context, nullptr, 0, filter);
 }
 
 // Function to report a value or object as JSON
 // This function is recursive, so keep its stack usage low
-void ObjectModel::ReportItemAsJson(OutputBuffer *buf, ObjectExplorationContext& context, ExpressionValue val, const char *filter) const
+void ObjectModel::ReportItemAsJson(OutputBuffer *buf, ObjectExplorationContext& context, const ObjectModelClassDescriptor *classDescriptor, ExpressionValue val, const char *filter) const
 {
 	if (context.WantArrayLength() && *filter == 0)
 	{
@@ -373,7 +389,7 @@ void ObjectModel::ReportItemAsJson(OutputBuffer *buf, ObjectExplorationContext& 
 				++filter;
 				if (*filter == ']')						// if reporting on [parts of] all elements in the array
 				{
-					ReportArrayAsJson(buf, context, val.omadVal, filter + 1);
+					ReportArrayAsJson(buf, context, classDescriptor, val.omadVal, filter + 1);
 				}
 				else
 				{
@@ -391,7 +407,7 @@ void ObjectModel::ReportItemAsJson(OutputBuffer *buf, ObjectExplorationContext& 
 					context.AddIndex(index);
 					{
 						ReadLocker lock(val.omadVal->lockPointer);
-						ReportItemAsJson(buf, context, val.omadVal->GetElement(this, context), endptr + 1);
+						ReportItemAsJson(buf, context, classDescriptor, val.omadVal->GetElement(this, context), endptr + 1);
 					}
 					context.RemoveIndex();
 					if (*filter == 0)
@@ -402,7 +418,7 @@ void ObjectModel::ReportItemAsJson(OutputBuffer *buf, ObjectExplorationContext& 
 			}
 			else if (*filter == 0)						// else reporting on all subparts of all elements in the array, or just the length
 			{
-				ReportArrayAsJson(buf, context, val.omadVal, filter);
+				ReportArrayAsJson(buf, context, classDescriptor, val.omadVal, filter);
 			}
 			else
 			{
@@ -420,7 +436,7 @@ void ObjectModel::ReportItemAsJson(OutputBuffer *buf, ObjectExplorationContext& 
 				buf->cat("null");						// error, should have reached the end of the filter or a '.'
 				break;
 			}
-			val.omVal->ReportAsJson(buf, context, val.param, filter);
+			val.omVal->ReportAsJson(buf, context, (val.omVal == this) ? classDescriptor : nullptr, val.param, filter);
 			break;
 
 		case TypeCode::Float:
@@ -625,7 +641,7 @@ void ObjectModel::ReportItemAsJson(OutputBuffer *buf, ObjectExplorationContext& 
 }
 
 // Report an entire array as JSON
-void ObjectModel::ReportArrayAsJson(OutputBuffer *buf, ObjectExplorationContext& context, const ObjectModelArrayDescriptor *omad, const char *filter) const
+void ObjectModel::ReportArrayAsJson(OutputBuffer *buf, ObjectExplorationContext& context, const ObjectModelClassDescriptor *classDescriptor, const ObjectModelArrayDescriptor *omad, const char *filter) const
 {
 	ReadLocker lock(omad->lockPointer);
 
@@ -638,29 +654,28 @@ void ObjectModel::ReportArrayAsJson(OutputBuffer *buf, ObjectExplorationContext&
 			buf->cat(',');
 		}
 		context.AddIndex(i);
-		ReportItemAsJson(buf, context, omad->GetElement(this, context), filter);
+		ReportItemAsJson(buf, context, classDescriptor, omad->GetElement(this, context), filter);
 		context.RemoveIndex();
 	}
 	buf->cat(']');
 }
 
 // Find the requested entry
-const ObjectModelTableEntry* ObjectModel::FindObjectModelTableEntry(uint8_t tableNumber, const char* idString) const noexcept
+const ObjectModelTableEntry* ObjectModel::FindObjectModelTableEntry(const ObjectModelClassDescriptor *classDescriptor, uint8_t tableNumber, const char* idString) const noexcept
 {
-	const uint8_t *descriptor;
-	const ObjectModelTableEntry *tbl = GetObjectModelTable(descriptor);
+	const uint8_t * const descriptor = classDescriptor->omd;
 	if (tableNumber >= descriptor[0])
 	{
 		return nullptr;
 	}
 
-	const size_t numEntries = descriptor[tableNumber + 1];
-	while (tableNumber != 0)
+	const ObjectModelTableEntry *tbl = classDescriptor->omt;
+	for (size_t i = 0; i < tableNumber; ++i)
 	{
-		--tableNumber;
-		tbl += descriptor[tableNumber + 1];
+		tbl += descriptor[i + 1];
 	}
 
+	const size_t numEntries = descriptor[tableNumber + 1];
 	size_t low = 0, high = numEntries;
 	while (high > low)
 	{
@@ -679,7 +694,11 @@ const ObjectModelTableEntry* ObjectModel::FindObjectModelTableEntry(uint8_t tabl
 			high = mid;
 		}
 	}
-	return (low < numEntries && tbl[low].IdCompare(idString) == 0) ? &tbl[low] : nullptr;
+	if (low < numEntries && tbl[low].IdCompare(idString) == 0)
+	{
+		return &tbl[low];
+	}
+	return nullptr;
 }
 
 /*static*/ const char* ObjectModel::GetNextElement(const char *id) noexcept
@@ -697,7 +716,7 @@ bool ObjectModelTableEntry::Matches(const char* filterString, const ObjectExplor
 }
 
 // Add the value of this element to the buffer, returning true if it matched and we did
-bool ObjectModelTableEntry::ReportAsJson(OutputBuffer* buf, ObjectExplorationContext& context, const ObjectModel *self, const char* filter, bool first) const noexcept
+bool ObjectModelTableEntry::ReportAsJson(OutputBuffer* buf, ObjectExplorationContext& context, const ObjectModelClassDescriptor *classDescriptor, const ObjectModel *self, const char* filter, bool first) const noexcept
 {
 	const char * nextElement = ObjectModel::GetNextElement(filter);
 	const ExpressionValue val = func(self, context);
@@ -709,7 +728,7 @@ bool ObjectModelTableEntry::ReportAsJson(OutputBuffer* buf, ObjectExplorationCon
 			buf->cat(name);
 			buf->cat("\":");
 		}
-		self->ReportItemAsJson(buf, context, val, nextElement);
+		self->ReportItemAsJson(buf, context, classDescriptor, val, nextElement);
 		return true;
 	}
 	return false;
@@ -735,20 +754,33 @@ int ObjectModelTableEntry::IdCompare(const char *id) const noexcept
 }
 
 // Get the value of an object
-ExpressionValue ObjectModel::GetObjectValue(ObjectExplorationContext& context, const char *idString, uint8_t tableNumber) const
+ExpressionValue ObjectModel::GetObjectValue(ObjectExplorationContext& context, const ObjectModelClassDescriptor * null classDescriptor, const char *idString, uint8_t tableNumber) const
 {
-	const ObjectModelTableEntry *const e = FindObjectModelTableEntry(tableNumber, idString);
-	if (e == nullptr)
+	if (classDescriptor == nullptr)
 	{
-		throw context.ConstructParseException("unknown value '%s'", idString);
+		classDescriptor = GetObjectModelClassDescriptor();
 	}
 
-	idString = GetNextElement(idString);
-	ExpressionValue val = e->func(this, context);
-	return GetObjectValue(context, val, idString);
+	while (classDescriptor != nullptr)
+	{
+		const ObjectModelTableEntry * const e = FindObjectModelTableEntry(classDescriptor, tableNumber, idString);
+		if (e != nullptr)
+		{
+			idString = GetNextElement(idString);
+			const ExpressionValue val = e->func(this, context);
+			return GetObjectValue(context, classDescriptor, val, idString);
+		}
+		if (tableNumber != 0)
+		{
+			break;
+		}
+		classDescriptor = classDescriptor->parent;			// search parent class object model too
+	}
+
+	throw context.ConstructParseException("unknown value '%s'", idString);
 }
 
-ExpressionValue ObjectModel::GetObjectValue(ObjectExplorationContext& context, ExpressionValue val, const char *idString) const
+ExpressionValue ObjectModel::GetObjectValue(ObjectExplorationContext& context, const ObjectModelClassDescriptor *classDescriptor, ExpressionValue val, const char *idString) const
 {
 	switch (val.GetType())
 	{
@@ -777,7 +809,7 @@ ExpressionValue ObjectModel::GetObjectValue(ObjectExplorationContext& context, E
 			}
 
 			const ExpressionValue arrayElement = val.omadVal->GetElement(this, context);
-			return GetObjectValue(context, arrayElement, idString + 1);
+			return GetObjectValue(context, classDescriptor, arrayElement, idString + 1);
 		}
 
 	case TypeCode::ObjectModel:
@@ -786,7 +818,7 @@ ExpressionValue ObjectModel::GetObjectValue(ObjectExplorationContext& context, E
 		case 0:
 			return val;
 		case '.':
-			return val.omVal->GetObjectValue(context, idString + 1, val.param);
+			return val.omVal->GetObjectValue(context, (val.omVal == this) ? classDescriptor : nullptr, idString + 1, val.param);
 		case '^':
 			throw context.ConstructParseException("object is not an array");
 		default:
