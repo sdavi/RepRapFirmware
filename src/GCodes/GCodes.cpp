@@ -310,6 +310,19 @@ bool GCodes::DoingFileMacro() const noexcept
 	return false;
 }
 
+// Return true if any channel is waiting for a message acknowledgement
+bool GCodes::WaitingForAcknowledgement() const noexcept
+{
+	for (const GCodeBuffer *gbp : gcodeSources)
+	{
+		if (gbp != nullptr && gbp->MachineState().waitingForAcknowledgement)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 // Return the current position of the file being printed in bytes.
 // Unlike other methods returning file positions it never returns noFilePosition
 FilePosition GCodes::GetFilePosition() const noexcept
@@ -599,16 +612,10 @@ void GCodes::DoFilePrint(GCodeBuffer& gb, const StringRef& reply) noexcept
 				}
 				else if (gb.GetState() == GCodeState::doingUserMacro)
 				{
+					// M98 needs its own state in SBC mode to make sure the code does not completed before
+					// the file has been requested. This will become obsolete in RRF 3.02.
 					gb.SetState(GCodeState::normal);
 					UnlockAll(gb);
-
-					// Output a warning message on demand
-					if (hadFileError)
-					{
-						bool reportMissing, fromCode;
-						reply.printf("Macro file %s not found", gb.GetRequestedMacroFile(reportMissing, fromCode));
-						rslt = GCodeResult::warning;
-					}
 				}
 				else if (gb.GetState() == GCodeState::loadingFilament && hadFileError)
 				{
@@ -620,7 +627,7 @@ void GCodes::DoFilePrint(GCodeBuffer& gb, const StringRef& reply) noexcept
 				if (!gb.IsDoingFileMacro() && gb.GetNormalInput() != nullptr)
 				{
 					// Need to send a final empty response to the SBC if the request came from a code so it can pop its stack
-					HandleReplyPreserveResult(gb, (gb.GetState() == GCodeState::normal) ? rslt : GCodeResult::ok, "");
+					HandleReplyPreserveResult(gb, (gb.GetState() == GCodeState::normal) ? rslt : GCodeResult::ok, reply.c_str());
 					gb.FinishedBinaryMode();
 				}
 
