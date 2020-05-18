@@ -1,3 +1,6 @@
+:warning: This repository is no longer maintained. :warning:
+
+
 LPC Port of RepRapFirmware
 ==========================
 
