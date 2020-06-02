@@ -9,6 +9,11 @@
 //All I/Os default to input with pullup after reset (9.2.1 from manual)
 //The Smoothie Bootloader turns off Pins 2.4, 2.5, 2.6 and 2.7 which are used as Heater pins
 
+//NOTE:: From Errata sheet Rev. 10.4 — 17 March 2020
+//The General Purpose I/O (GPIO) pins have configurable pull-up/pull-down resistors where the pins are pulled up to the VDD level by default.
+//During power-up, an unexpected glitch (low pulse) could occur on the port pins as the VDD supply ramps up that affects Initial and Revision "A" chips
+
+
 Pin TEMP_SENSE_PINS[NumThermistorInputs] = {NoPin, NoPin, NoPin, NoPin};
 Pin SpiTempSensorCsPins[MaxSpiTempSensors] = { NoPin, NoPin };
 SSPChannel TempSensorSSPChannel = SSP0;   //default SPI Temp sensor on SSP0
@@ -78,6 +83,23 @@ Pin SoftwareSPIPins[3] = {NoPin, NoPin, NoPin};         //GPIO pins for software
 bool ADCEnablePreFilter = false;
 uint8_t ADCPreFilterNumberSamples = 8; //8 Samples per channel
 uint32_t ADCPreFilterSampleRate = 10000; //10KHz
+
+
+
+//BrownOut Detection
+//The brownout interrupt is triggered when the supply voltage drops below approx 2.2V
+//If the voltage falls below approx 1.8V the BOD will reset the CPU (and Brownout will be
+//shown in M122 as the reset cause when it restarts).
+//If the voltage falls below 1V this will trigger a Power-On reset (power on will be shown
+//in M122 as the reset cause)
+//Initial revision CPUs require Vdd to be above 3.0V as per the Errata sheet Rev. 10.4 — 17 March 2020
+volatile uint32_t BrownoutEvents = 0;
+void BOD_IRQHandler()
+{
+    BrownoutEvents++;
+}
+
+
 
 
 //Default to the Generic PinTable

@@ -41,7 +41,7 @@ RTOSPlusTCPEthernetInterface *rtosTCPEtherInterfacePtr; //pointer to the clas in
 
 //TODO:: Currently NetworkInferface.c expects ucMACAddress to be externally defined....
 //       IP Init doesnt seem to pass on the mac address to the portable layer
-uint8_t ucMACAddress[ 6 ];
+//uint8_t ucMACAddress[ 6 ];
 
 
 
@@ -299,14 +299,6 @@ void RTOSPlusTCPEthernetInterface::Start() noexcept
         
         SetIPAddress(platform.GetIPAddress(), platform.NetMask(), platform.GateWay());
 
-        //set the global mac var needed for networkinterface.c
-        ucMACAddress[0] = macAddress.bytes[0];
-        ucMACAddress[1] = macAddress.bytes[1];
-        ucMACAddress[2] = macAddress.bytes[2];
-        ucMACAddress[3] = macAddress.bytes[3];
-        ucMACAddress[4] = macAddress.bytes[4];
-        ucMACAddress[5] = macAddress.bytes[5];
-
         uint8_t ip[4], nm[4], gw[4], dns[4];
         ipAddress.UnpackV4(ip);
         netmask.UnpackV4(nm);
@@ -318,7 +310,7 @@ void RTOSPlusTCPEthernetInterface::Start() noexcept
         }
         
         //FreeRTOS_IPInit should only be called once
-        BaseType_t ret = FreeRTOS_IPInit( ip, nm, gw, dns, ucMACAddress );
+        BaseType_t ret = FreeRTOS_IPInit( ip, nm, gw, dns, macAddress.bytes );
         if(ret == pdFALSE)
         {
             platform.Message(NetworkInfoMessage, "Failed to Init FreeRTOS+TCP\n");
@@ -443,13 +435,15 @@ void RTOSPlusTCPEthernetInterface::Diagnostics(MessageType mtype) noexcept
 #if defined(COLLECT_NETDRIVER_ERROR_STATS)
     //defined in driver for debugging
     extern uint32_t numNetworkRXIntOverrunErrors; //hardware producted overrun error
-    extern uint32_t numNetworkDroppedPacketsDueToNoBuffer;
+    extern uint32_t numNetworkDroppedRXPacketsDueToNoBuffer;
+    extern uint32_t numNetworkDroppedTXPacketsDueToNoBuffer;
     extern uint32_t numRejectedStackPackets;
 
     if(numRejectedStackPackets>0) platform.MessageF(mtype, "EthDrv: Rejected packets by IPStack: %lu\n",  numRejectedStackPackets );
     if(numNetworkRXIntOverrunErrors>0) platform.MessageF(mtype, "EthDrv: RX IntOverrun Errors: %lu\n", numNetworkRXIntOverrunErrors);
-    if(numNetworkDroppedPacketsDueToNoBuffer>0) platform.MessageF(mtype, "EthDrv: Dropped packets (no buffer): %lu\n",  numNetworkDroppedPacketsDueToNoBuffer );
-
+    if(numNetworkDroppedRXPacketsDueToNoBuffer>0) platform.MessageF(mtype, "EthDrv: Dropped Rx packets (no buffer): %lu\n",  numNetworkDroppedRXPacketsDueToNoBuffer );
+    if(numNetworkDroppedTXPacketsDueToNoBuffer>0) platform.MessageF(mtype, "EthDrv: Dropped Tx packets (no buffer): %lu\n",  numNetworkDroppedTXPacketsDueToNoBuffer );
+    
     extern uint32_t numNetworkCRCErrors;
     extern uint32_t numNetworkSYMErrors;
     extern uint32_t numNetworkLENErrors;
@@ -583,7 +577,9 @@ void RTOSPlusTCPEthernetInterface::ProcessIPApplication( eIPCallbackEvent_t eNet
         if( ulIPAddress == 0 ) //ulIPAddress is in 32bit format
         {
             //IP address equals 0.0.0.0 here. DHCP has Failed.
-            state = NetworkState::disabled;
+            //since the user has started networking, keep trying
+            FreeRTOS_NetworkDown(); //send a network down event to retry connecting
+            state = NetworkState::establishingLink;
         }
         else
         {

@@ -62,7 +62,7 @@
 #if defined(LPC_NETWORKING)
     //LPC Ethernet
     #define HAS_RTOSPLUSTCP_NETWORKING   1
-    #define SUPPORT_12864_LCD            1
+    #define SUPPORT_12864_LCD            0 //not enough memory for LCD anymore on ethernet builds
     #define HAS_WIFI_NETWORKING          0
     #define HAS_MASS_STORAGE             1
 
@@ -265,6 +265,10 @@ extern Pin AuxSerialRxTxPins[NumberSerialPins];
 #define STEP_TC             (LPC_TIMER0)
 #define STEP_TC_IRQN        TIMER0_IRQn
 #define STEP_TC_HANDLER     TIMER0_IRQHandler
+
+
+
+extern volatile uint32_t BrownoutEvents;
 
 
 

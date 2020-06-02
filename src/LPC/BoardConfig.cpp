@@ -143,7 +143,17 @@ void BoardConfig::Init() noexcept
     FATFS fs;
     FRESULT rslt;
     
+        // Timer 0 is used for step generation (set elsewhere)
+    NVIC_SetPriority(TIMER1_IRQn, 8);                       //Timer 1 is used for the ADC PreFilter (Interrupts not enabled)
+    NVIC_SetPriority(TIMER2_IRQn, NvicPriorityTimerServo);  //Timer 2 runs the PWM for Servos at 50hz
+    NVIC_SetPriority(TIMER3_IRQn, 8);    //Timer 3 free
+    NVIC_SetPriority(ADC_IRQn, NvicPriorityADC);       //ADC interrupt priority when using burst with pre-filtering
+
     NVIC_SetPriority(DMA_IRQn, NvicPrioritySpi);
+    NVIC_SetPriority(PWM1_IRQn, NvicPriorityTimerPWM);  //HWPWM running in timer mode runs Software PWM
+    
+    NVIC_EnableIRQ(BOD_IRQn); // enable the BrownOut Detector interrupt
+    
 #if !HAS_MASS_STORAGE
     sd_mmc_init(SdWriteProtectPins, SdSpiCSPins);
 #endif
@@ -448,19 +458,12 @@ void BoardConfig::Diagnostics(MessageType mtype) noexcept
         if(next != nullptr)
         {
             const Pin pin = next->GetPin();
-#ifdef LPC_DEBUG
-            reprap.GetPlatform().MessageF(mtype, "Pin %d.%d @ %dHz (%s) - LateCnt: %lu\n", (pin >> 5), (pin & 0x1f), next->GetFrequency(), next->IsRunning()?"Enabled":"Disabled", next->GetLateCount() );
-#else
             reprap.GetPlatform().MessageF(mtype, "Pin %d.%d @ %dHz (%s)\n", (pin >> 5), (pin & 0x1f), next->GetFrequency(), next->IsRunning()?"Enabled":"Disabled" );
-#endif
         }
     };
     
-    
-    //Print Servo PWM Timer or HW PWM assignments
+    //Print Servo PWM Timer
     reprap.GetPlatform().MessageF(mtype, "\n== Servo PWM ==\n");
-    reprap.GetPlatform().MessageF(mtype, "Hardware PWM = %dHz ", HardwarePWMFrequency );
-    PrintPinArray(mtype, UsedHardwarePWMChannel, NumPwmChannels);
     reprap.GetPlatform().MessageF(mtype, "Timer2 PWM = 50Hz ");
     PrintPinArray(mtype, Timer2PWMPins, MaxTimerEntries);
 }

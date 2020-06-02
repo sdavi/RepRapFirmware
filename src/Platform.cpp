@@ -623,6 +623,7 @@ void Platform::Init() noexcept
 #endif
 
 #if defined(__LPC17xx__)
+    defaultMacAddress.SetDefault();
 	if (hasDriverCurrentControl)
 	{
 		mcp4451.begin();
@@ -1680,15 +1681,6 @@ void Platform::InitialiseInterrupts() noexcept
 	NVIC_SetPriority(I2C1_IRQn, NvicPriorityTwi);
 #endif
 
-#if defined(__LPC17xx__)
-	// set rest of the Timer Interrupt priorities
-	// Timer 0 is used for step generation (set elsewhere)
-	NVIC_SetPriority(TIMER1_IRQn, 8);                       //Timer 1 is currently unused
-	NVIC_SetPriority(TIMER2_IRQn, NvicPriorityTimerServo);  //Timer 2 runs the PWM for Servos at 50hz
-	NVIC_SetPriority(TIMER3_IRQn, NvicPriorityTimerPWM);    //Timer 3 runs the microsecond free running timer to generate heater/fan PWM
-    NVIC_SetPriority(ADC_IRQn, NvicPriorityADC);       //ADC interrupt priority when using burst with pre-filtering
-#endif
-
     // Tick interrupt for ADC conversions
 	tickState = 0;
 	currentFilterNumber = 0;
@@ -1743,7 +1735,7 @@ void Platform::Diagnostics(MessageType mtype) noexcept
 
 		if (LPC_SYSCTL->RSID & RSID_POR) { MessageF(mtype, "[power up]"); }
 		if (LPC_SYSCTL->RSID & RSID_EXTR) { MessageF(mtype, "[reset button]"); }
-		if (LPC_SYSCTL->RSID & RSID_WDTR) { MessageF(mtype, "[watchdog]"); }
+		//if (LPC_SYSCTL->RSID & RSID_WDTR) { MessageF(mtype, "[watchdog]"); } //Note::this will not be displayed as watchdog flag is cleared before reset as it affects the smoothie bootloader
 		if (LPC_SYSCTL->RSID & RSID_BODR) { MessageF(mtype, "[brownout]"); }
 		if (LPC_SYSCTL->RSID & RSID_SYSRESET) { MessageF(mtype, "[software]"); }
 		if (LPC_SYSCTL->RSID & RSID_LOCKUP) { MessageF(mtype, "[lockup]"); }
@@ -1858,6 +1850,10 @@ void Platform::Diagnostics(MessageType mtype) noexcept
 				numVinUnderVoltageEvents, numVinOverVoltageEvents,
 				(HasVinPower()) ? "yes" : "no");
 	lowestVin = highestVin = currentVin;
+#endif
+    
+#if defined(__LPC17xx__)
+    MessageF(mtype, "Supply voltage: under voltage events: %" PRIu32 "\n", BrownoutEvents);
 #endif
 
 #if HAS_12V_MONITOR
