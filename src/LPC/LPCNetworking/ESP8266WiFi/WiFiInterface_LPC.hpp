@@ -2,6 +2,7 @@
 
 #include "chip.h" //LPC Open
 #include "DMA.h"
+#include "HardwareSPI.h"
 
 //ESP connected to SSP0
 
@@ -61,13 +62,13 @@ static bool spi_dma_check_rx_complete() noexcept
 static void spi_tx_dma_setup(const void *buf, uint32_t transferLength) noexcept
 {
     // Setup DMA transfer: outBuffer --> SSP0 (Memory to Peripheral Transfer)
-    SspDmaTxTransfer(DMA_SSP0_TX, buf, transferLength);
+    HardwareSPI::SspDmaTxTransfer(DMA_SSP0_TX, buf, transferLength);
 }
 
 static void spi_rx_dma_setup(const void *buf, uint32_t transferLength) noexcept
 {
     // Setup DMA Receive: SSP0 --> inBuffer (Peripheral to Memory)
-    SspDmaRxTransfer(DMA_SSP0_RX, buf, transferLength);
+    HardwareSPI::SspDmaRxTransfer(DMA_SSP0_RX, buf, transferLength);
 }
 
 static void spi_slave_dma_setup(uint32_t dataOutSize, uint32_t dataInSize) noexcept
@@ -86,7 +87,7 @@ static void spi_slave_dma_setup(uint32_t dataOutSize, uint32_t dataInSize) noexc
 }
 
 // SPI interrupt handlers
-void ESP_SPI_HANDLER(void) noexcept
+void ESP_SPI_HANDLER(bool error) noexcept
 {
 	wifiInterface->SpiInterrupt();
 }
