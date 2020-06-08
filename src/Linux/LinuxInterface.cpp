@@ -269,7 +269,7 @@ void LinuxInterface::Spin()
 				case LinuxRequest::StartIap:
 					reprap.StartIap();
 					break;
-
+#endif
 				// Assign filament
 				case LinuxRequest::AssignFilament:
 				{
@@ -405,7 +405,12 @@ void LinuxInterface::Spin()
 				{
 					const GCodeChannel channel(i);
 					GCodeBuffer * const gb = reprap.GetGCodes().GetGCodeBuffer(channel);
-
+#ifdef __LPC17xx__
+                    if (gb == nullptr)
+                    {
+                        continue;
+                    }
+#endif
 					// Invalidate buffered codes if required
 					if (gb->IsInvalidated())
 					{
