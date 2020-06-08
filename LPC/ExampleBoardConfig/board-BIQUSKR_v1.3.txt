@@ -11,19 +11,26 @@ lpc.board = biquskr_1.3
 //                    Bed   E0    E1
 heat.tempSensePins = {0.23, 0.24, 0.25}; //tb, th0, th1
 
+//**SPI Devices**
+
+// spiChannel 
+//     0          SSP0
+//     1          SSP1
+//     2          SoftwareSPI (requires pins to be configured)
+
 
 //Only supports 1 External SDCard
-externalSDCard.csPin         = 0.16;
-externalSDCard.cardDetectPin = 1.31;
-lpc.externalSDCard.spiFrequencyHz  = 4000000;
-lpc.externalSDCard.spiChannel = 0; 
+sdCard.external.csPin           = 0.16;
+sdCard.external.cardDetectPin   = 1.31;
+sdCard.external.spiFrequencyHz  = 4000000;
+sdCard.external.spiChannel      = 0; 
 
 
 
 //LCD Pins (only ST9720 SPI currently supported)
 
 //setup the Software SPI Pins for LCD
-lpc.softwareSPI.pins = {1.20, NoPin, 1.18}; //Set to GPIO pins to use as SCK, MISO, MOSI
+softwareSPI.pins = {1.20, NoPin, 1.18}; //Set to GPIO pins to use as SCK, MISO, MOSI
 
 lcd.spiChannel = 2; //2 = SWSPI - Use Software SPI Channel
 lcd.lcdCSPin =       1.19; //LCD Chip Select

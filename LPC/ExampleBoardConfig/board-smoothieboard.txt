@@ -18,18 +18,19 @@ leds.diagnostic = 1.18; //RRF Diagnostics Pin (LED1 on Smoothie)
 
 //                    Bed   E0    E1
 heat.tempSensePins = {0.24, 0.23, 0.25}; //Max of 3 entries
-heat.spiTempSensorCSPins = { }
         
- 
-atxPowerPin = NoPin;
-        
-
 //**SPI Devices**
+
+// spiChannel 
+//     0          SSP0
+//     1          SSP1
+//     2          SoftwareSPI (requires pins to be configured)
     
+
 //Only supports 1 External SDCard
-externalSDCard.csPin         = 0.28;
-externalSDCard.cardDetectPin = 0.27;
-lpc.externalSDCard.spiFrequencyHz  = 4000000;
+sdCard.external.csPin           = 0.28;
+sdCard.external.cardDetectPin   = 0.27;
+sdCard.external.spiFrequencyHz  = 4000000;
 
 
 //LCD Pins (only ST9720 SPI currently supported)

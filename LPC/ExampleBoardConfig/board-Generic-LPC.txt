@@ -1,4 +1,6 @@
 //Config file to define Hardware Pins LPC Boards.
+//These are example options as of 6/20.
+//Check all options supported by the running binary by running: M122 P200
 
 
 //
@@ -32,29 +34,42 @@ leds.diagnostic = 1.18; //RRF Diagnostics Pin (LED1 on Smoothie)
 stepper.enablePins =             { 0.4,  0.10, 0.19, 0.21,  4.29};
 stepper.stepPins =               { 2.0,  2.1,  2.2,  2.3,   2.8}; 
 stepper.directionPins =          { 0.5,  0.11, 0.20, 0.22,  2.13};
-stepper.digipotFactor = 113.33; //factor for converting current to digipot value
+stepper.digipotFactor = 113.33; //factor for converting current to digipot value or set to 0 to disable
 	
 
-//                    Bed   E0    E1
-heat.tempSensePins = {0.24, 0.23, 0.25}; //Max of 3 entries
+heat.tempSensePins = {0.24, 0.23, 0.25}; //Max of 4 entries (
 
 //Chip Select pins for SPI Temperature Sensors
-// SPI Temperature sensor connected to SSP0 
 heat.spiTempSensorCSPins = { } // max of 2 entries
+heat.spiTempSensorChannel = 0;         
+
+atx.powerPin = NoPin;
+atx.powerPinInverted = false;
         
 
-atxPowerPin = NoPin;
-        
+
+adc.prefilter.enable = true; //enable ADC prefilter
+
 
 //**SPI Devices**
 
+// spiChannel 
+//     0          SSP0
+//     1          SSP1
+//     2          SoftwareSPI (requires pins to be configured)
+
+
+//softwareSPI.pins = {}; //Order of array: SCK, MISO, MOSI
+
+
 //Only supports 1 External SDCard
-externalSDCard.csPin         = 0.28;
-externalSDCard.cardDetectPin = 0.27;
-lpc.externalSDCard.spiFrequencyHz  = 4000000;
-lpc.externalSDCard.spiChannel = 0; 
+sdCard.external.csPin =          0.28;
+sdCard.external.cardDetectPin =  0.27;
+sdCard.external.spiFrequencyHz = 4000000;
+sdCard.external.spiChannel =     0; 
 
 
+//If LCD is compiled into binary
 //LCD Pins (only ST9720 SPI currently supported)
 lcd.lcdCSPin =       0.16; //LCD Chip Select
 lcd.lcdBeepPin =     1.31;
@@ -63,5 +78,8 @@ lcd.encoderPinB =    3.26;
 lcd.encoderPinSw =   1.30; //click
 lcd.lcdDCPin =       NoPin;  //DataControl Pin (A0) if none used set to NoPin
 lcd.panelButtonPin = 2.11; //Extra button on RRD Panels
-    
+lcd.spiChannel =     0;    //Connected to SSP0   
+
+
+
 

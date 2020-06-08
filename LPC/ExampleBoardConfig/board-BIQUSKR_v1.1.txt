@@ -18,19 +18,24 @@ leds.diagnostic = NoPin; //RRF Diagnostics Pin
  
     
 //                    Bed   E0    E1
-heat.tempSensePins = {0.23, 0.24, 0.25}; //Max of 3 entries
+heat.tempSensePins = {0.23, 0.24, 0.25}; //Max of 4 entries
 heat.spiTempSensorCSPins = { }
         
- 
-atxPowerPin = NoPin;
         
 
 //**SPI Devices**
+
+// spiChannel 
+//     0          SSP0
+//     1          SSP1
+//     2          SoftwareSPI (requires pins to be configured)
+
+
     
 //Only supports 1 External SDCard
-externalSDCard.csPin         = 1.23;
-externalSDCard.cardDetectPin = 1.31;
-lpc.externalSDCard.spiFrequencyHz  = 4000000;
+sdCard.external.csPin          = 1.23;
+sdCard.external.cardDetectPin  = 1.31;
+sdCard.external.spiFrequencyHz = 4000000;
 
 
 //LCD Pins (only ST9720 SPI currently supported)
