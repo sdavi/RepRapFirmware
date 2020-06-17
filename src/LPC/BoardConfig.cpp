@@ -88,10 +88,6 @@ static const boardConfigEntry_t boardConfigs[]=
 #endif
     
     {"adc.prefilter.enable", &ADCEnablePreFilter, nullptr, cvBoolType},
-    {"adc.preFilter.numberSamples", &ADCPreFilterNumberSamples, nullptr, cvUint8Type},
-    {"adc.preFilter.sampleRate", &ADCPreFilterSampleRate, nullptr, cvUint32Type},
-
-    
 };
 
 #if !HAS_MASS_STORAGE
@@ -144,11 +140,9 @@ void BoardConfig::Init() noexcept
     FRESULT rslt;
     
         // Timer 0 is used for step generation (set elsewhere)
-    NVIC_SetPriority(TIMER1_IRQn, 8);                       //Timer 1 is used for the ADC PreFilter (Interrupts not enabled)
+    NVIC_SetPriority(TIMER1_IRQn, 8);                       //Timer 1 is free
     NVIC_SetPriority(TIMER2_IRQn, NvicPriorityTimerServo);  //Timer 2 runs the PWM for Servos at 50hz
     NVIC_SetPriority(TIMER3_IRQn, 8);    //Timer 3 free
-    NVIC_SetPriority(ADC_IRQn, NvicPriorityADC);       //ADC interrupt priority when using burst with pre-filtering
-
     NVIC_SetPriority(DMA_IRQn, NvicPrioritySpi);
     NVIC_SetPriority(PWM1_IRQn, NvicPriorityTimerPWM);  //HWPWM running in timer mode runs Software PWM
     
@@ -236,7 +230,7 @@ void BoardConfig::Init() noexcept
         {
             setPullup(SdCardDetectPins[1], true);
             //set the SSP Channel for External SDCard
-            if(ExternalSDCardSSPChannel == SSP0 || ExternalSDCardSSPChannel == SSP1 || ExternalSDCardSSPChannel == SWSPI0)
+            if(ExternalSDCardSSPChannel == SSP0 || ExternalSDCardSSPChannel == SSP1)
             {
                 sd_mmc_setSSPChannel(1, ExternalSDCardSSPChannel); //must be called before reinit
             }
@@ -298,7 +292,7 @@ void BoardConfig::Init() noexcept
         pinMode(DiagPin, OUTPUT_LOW);
         
         //Configure ADC pre filter
-        ConfigureADCPreFilter(ADCEnablePreFilter, ADCPreFilterNumberSamples, ADCPreFilterSampleRate);
+        ConfigureADCPreFilter(ADCEnablePreFilter);
     }
 }
 

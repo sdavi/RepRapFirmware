@@ -80,9 +80,7 @@ Pin SoftwareSPIPins[3] = {NoPin, NoPin, NoPin};         //GPIO pins for software
     Pin LinuxTfrReadyPin = NoPin;
 #endif
 
-bool ADCEnablePreFilter = false;
-uint8_t ADCPreFilterNumberSamples = 8; //8 Samples per channel
-uint32_t ADCPreFilterSampleRate = 10000; //10KHz
+bool ADCEnablePreFilter = true;
 
 
 
